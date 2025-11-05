@@ -1,323 +1,188 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Multiple 10×10 Arrays – Partitions (single-use tool)</title>
-<style>
-  :root {
-    --cell: 40px;
-    --gap: 8px;
-    --dot: 14px;
-    --red: #ef4444;
-    --blue: #2563eb;
-  }
-  body {
-    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-    background: #f7f7f9;
-    margin: 0;
-    padding: 20px;
-    display: grid;
-    gap: 16px;
-    justify-items: center;
-  }
-  header {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-  button, .tiny {
-    appearance: none; border: 0; border-radius: 8px;
-    padding: 10px 14px; background: #10b981; color: #fff;
-    font-weight: 600; cursor: pointer;
-  }
-  button:hover { background: #059669; }
-  .tiny { padding: 6px 10px; font-size: 12px; background: #374151; }
-
-  #boards {
-    width: min(1000px, 96vw);
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
-    gap: 20px;
-  }
-  .board {
-    background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
-    padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06);
-    display: grid; gap: 12px;
-  }
-  .board-header {
-    display: flex; justify-content: space-between; align-items: center;
-  }
-  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
-
-  .stage {
-    position: relative;
-    width: calc(10 * var(--cell) + 9 * var(--gap));
-    height: calc(10 * var(--cell) + 9 * var(--gap));
-    margin-inline: auto;
-  }
-
-  .grid {
-    position: absolute; inset: 0;
-    display: grid;
-    grid-template-columns: repeat(10, var(--cell));
-    gap: var(--gap);
-    justify-content: center;
-    align-content: center;
-  }
-
-  .overlay {
-    position: absolute; inset: 0;
-    pointer-events: none; /* enable only while drawing */
-  }
-
-  .circle {
-    width: var(--cell); height: var(--cell);
-    border-radius: 50%;
-    border: 1px solid #9ca3af;
-    position: relative; /* for blue dot */
-    box-sizing: border-box;
-    cursor: pointer;
-    transition: transform .08s ease;
-  }
-  .circle:hover { transform: scale(1.05); }
-
-  .red   { background: var(--red); }
-  .white { background: #ffffff; }
-
-  /* Blue dot when clicked */
-  .clicked::after {
-    content: "";
-    position: absolute;
-    width: var(--dot); height: var(--dot);
-    border-radius: 50%;
-    background: var(--blue);
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    box-shadow: 0 0 0 2px rgba(255,255,255,.7);
-  }
-
-  .badge {
-    background: #e5e7eb; color: #111827; border-radius: 999px;
-    padding: 4px 8px; font-size: 12px; font-weight: 600;
-  }
-</style>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Rectangle Partitions — Click-to-Use</title>
+  <style>
+    :root{
+      --bg:#0b0b0b; --fg:#f5f5f5; --muted:#bdbdbd; --surface:#161616; --card:#1e1e1e; --accent:#3a86ff;
+      --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial;
+    }
+    body{margin:0; background:var(--bg); color:var(--fg); font-family:var(--font); padding:16px; display:flex; flex-direction:column; gap:14px}
+    h1{margin:0 0 6px; font-size:22px}
+    .row{display:grid; grid-template-columns:320px 1fr; gap:16px}
+    @media (max-width:900px){ .row{grid-template-columns:1fr} }
+    .card{background:var(--card); border:1px solid #2a2a2a; border-radius:14px; padding:12px}
+    .controls{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+    .btn{background:var(--surface); color:var(--fg); border:1px solid #2a2a2a; border-radius:10px; padding:8px 12px; cursor:pointer}
+    label{font-size:14px; color:var(--muted)}
+    input[type="text"]{background:var(--surface); color:var(--fg); border:1px solid #2a2a2a; border-radius:10px; padding:8px 10px}
+    .canvas-card{position:relative}
+    #field{width:100%; height:520px; background:var(--surface); border-radius:12px; border:1px solid #2a2a2a; display:block}
+    .floating{position:absolute; right:12px; top:12px; display:flex; flex-direction:column; gap:8px}
+    .chips{display:flex; gap:10px; margin-top:8px; color:var(--muted); flex-wrap:wrap}
+    .chip{background:var(--surface); border:1px solid #2a2a2a; border-radius:999px; padding:6px 10px}
+    .note{color:var(--muted); font-size:13px}
+  </style>
 </head>
 <body>
-  <header>
-    <button id="addBoard">Add 10×10 Array</button>
-    <button id="removeBoard" class="tiny">Remove last</button>
-  </header>
+  <h1>Rectangle Partitions — Click-to-Use</h1>
 
-  <div id="boards"></div>
-
-<script>
-(function(){
-  const boardsEl = document.getElementById('boards');
-  const addBtn   = document.getElementById('addBoard');
-  const rmBtn    = document.getElementById('removeBoard');
-  let boardCount = 0;
-
-  addBtn.addEventListener('click', () => createBoard());
-  rmBtn.addEventListener('click', () => {
-    if (boardsEl.lastElementChild) boardsEl.lastElementChild.remove();
-  });
-
-  // Create one board to start
-  createBoard();
-
-  function createBoard() {
-    boardCount++;
-    const board = document.createElement('section');
-    board.className = 'board';
-
-    board.innerHTML = `
-      <div class="board-header">
-        <div class="badge">Array ${boardCount}</div>
-        <div class="controls">
-          <button data-action="rearrange">Rearrange</button>
-          <button data-action="draw" class="tiny" title="Draw one partition">Draw Partition</button>
-          <button data-action="reset" class="tiny">Reset</button>
-        </div>
+  <div class="row">
+    <div class="card">
+      <div class="controls">
+        <label>Expression (W × H):
+          <input id="expr" type="text" value="6 x 4" aria-label="Rectangle expression">
+        </label>
+        <button id="applyExpr" class="btn">Set Rectangle</button>
       </div>
-      <div class="stage">
-        <div class="grid"></div>
-        <svg class="overlay" viewBox="0 0 1000 1000" preserveAspectRatio="none"></svg>
+
+      <div class="controls">
+        <label><input id="toggleTheme" type="checkbox"> Black on White</label>
+        <label><input id="toggleDots" type="checkbox" checked> Show Dots</label>
+        <button id="toggleAreas" class="btn">Show/Hide Areas</button>
+        <button id="resetPartitions" class="btn">Clear Partitions</button>
       </div>
-    `;
 
-    const grid = board.querySelector('.grid');
-    const overlay = board.querySelector('.overlay');
-    const drawBtn = board.querySelector('[data-action="draw"]');
+      <label>Write expression for the rectangle:
+        <input id="exprLabel" type="text" value="6 × 4" aria-label="Expression label">
+      </label>
+      <p class="note" style="margin-top:6px">
+        Click <b>Draw Partition</b>, then click once inside the field to place a vertical or horizontal cut at the nearest grid line.
+        The button must be pressed again for each new partition.
+      </p>
+    </div>
 
-    boardsEl.appendChild(board);
+    <div class="card canvas-card">
+      <canvas id="field" width="1000" height="520" aria-label="Partition field"></canvas>
+      <div class="floating">
+        <button id="drawPartition" class="btn" title="Arm a single cut">Draw Partition</button>
+        <button id="showProduct" class="btn" title="Toggle overall product">Show W×H</button>
+      </div>
+      <div id="axis" class="chips" aria-live="polite"></div>
+    </div>
+  </div>
 
-    // Build initial pattern and keep references
-    const circles = [];
-    for (let r = 0; r < 10; r++) {
-      for (let c = 0; c < 10; c++) {
-        const el = document.createElement('div');
-        el.className = 'circle ' + (c < 5 ? 'red' : 'white');
-        el.dataset.original = (c < 5 ? 'red' : 'white');
-        el.addEventListener('click', () => {
-          el.classList.toggle('clicked'); // blue dot on/off
-        });
-        grid.appendChild(el);
-        circles.push(el);
+  <script>
+    const field = document.getElementById('field');
+    const ctx = field.getContext('2d');
+    let W=6, H=4;
+    let showDots = true, lightTheme = false;
+    let drawArmed = false; // click-to-use (one cut per press)
+    let showAreas = false, showProductOnly = false;
+
+    const vCuts = new Set(); // 1..W-1
+    const hCuts = new Set(); // 1..H-1
+
+    function parseExpr(t){
+      const m = t.toLowerCase().replace(/×/g,'x').match(/(\d+)\s*[x*]\s*(\d+)/);
+      return m ? {w:Math.max(1,parseInt(m[1],10)), h:Math.max(1,parseInt(m[2],10))} : null;
+    }
+    function geom(){
+      const pad=28, width=field.width-pad*2, height=field.height-pad*2;
+      return {pad,width,height,cw:width/W,ch:height/H};
+    }
+    function draw(){
+      ctx.clearRect(0,0,field.width,field.height);
+      ctx.fillStyle = lightTheme ? '#ffffff' : '#0f0f10';
+      ctx.fillRect(0,0,field.width,field.height);
+
+      const {pad,width,height,cw,ch} = geom();
+
+      // border
+      ctx.strokeStyle = lightTheme ? '#c9c9c9' : '#2a2a2a';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(pad,pad,width,height);
+
+      // dots
+      if(showDots){
+        ctx.fillStyle = lightTheme ? '#101010' : '#f0f0f0';
+        for(let r=0;r<=H;r++){
+          for(let c=0;c<=W;c++){
+            ctx.beginPath(); ctx.arc(pad+c*cw, pad+r*ch, 2, 0, Math.PI*2); ctx.fill();
+          }
+        }
       }
+      // grid
+      ctx.strokeStyle = lightTheme ? '#d8d8d8' : '#262626'; ctx.lineWidth = 1;
+      for(let r=1;r<H;r++){ const y=pad+r*ch; ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(pad+width,y); ctx.stroke(); }
+      for(let c=1;c<W;c++){ const x=pad+c*cw; ctx.beginPath(); ctx.moveTo(x,pad); ctx.lineTo(x,pad+height); ctx.stroke(); }
+
+      // partitions (thicker blue)
+      ctx.strokeStyle = '#1e90ff'; ctx.lineWidth = 3;
+      hCuts.forEach(r=>{ const y=pad+r*ch; ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(pad+width,y); ctx.stroke(); });
+      vCuts.forEach(c=>{ const x=pad+c*cw; ctx.beginPath(); ctx.moveTo(x,pad); ctx.lineTo(x,pad+height); ctx.stroke(); });
+
+      // areas overlay
+      if(showAreas){
+        const v=[0,...Array.from(vCuts).sort((a,b)=>a-b),W];
+        const h=[0,...Array.from(hCuts).sort((a,b)=>a-b),H];
+        ctx.fillStyle = lightTheme ? '#111' : '#eaeaea';
+        ctx.font = '600 16px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto';
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        for(let i=0;i<h.length-1;i++){
+          for(let j=0;j<v.length-1;j++){
+            const w=v[j+1]-v[j], hh=h[i+1]-h[i];
+            const x=pad+(v[j]+w/2)*cw, y=pad+(h[i]+hh/2)*ch;
+            ctx.fillText(`${w}×${hh} = ${w*hh}`, x, y);
+          }
+        }
+      }
+      if(showProductOnly){
+        ctx.fillStyle = lightTheme ? '#111' : '#eaeaea';
+        ctx.font = '700 18px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto';
+        ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+        ctx.fillText(`Product: ${W}×${H} = ${W*H}`, 12, field.height-12);
+      }
+      renderChips();
+    }
+    function renderChips(){
+      const axis = document.getElementById('axis'); axis.innerHTML='';
+      const v=[0,...Array.from(vCuts).sort((a,b)=>a-b),W];
+      const h=[0,...Array.from(hCuts).sort((a,b)=>a-b),H];
+      const wParts=[], hParts=[];
+      for(let i=0;i<v.length-1;i++) wParts.push(v[i+1]-v[i]);
+      for(let i=0;i<h.length-1;i++) hParts.push(h[i+1]-h[i]);
+      const wEl=document.createElement('div'); wEl.className='chip'; wEl.textContent=`Width: ${wParts.join(' + ')}`;
+      const hEl=document.createElement('div'); hEl.className='chip'; hEl.textContent=`Height: ${hParts.join(' + ')}`;
+      const ex=document.createElement('div'); ex.className='chip'; ex.textContent=`Expression: ${document.getElementById('exprLabel').value}`;
+      axis.appendChild(wEl); axis.appendChild(hEl); axis.appendChild(ex);
+    }
+    function nearestCut(x,y){
+      const {pad,width,height,cw,ch} = geom();
+      if(x<pad||x>pad+width||y<pad||y>pad+height) return null;
+      const colPos=(x-pad)/cw, rowPos=(y-pad)/ch;
+      const cN=Math.round(colPos), rN=Math.round(rowPos);
+      const dx=Math.abs(colPos-cN)*cw, dy=Math.abs(rowPos-rN)*ch;
+      if(dx<dy){ if(cN>0&&cN<W) return {type:'v',index:cN}; }
+      else{ if(rN>0&&rN<H) return {type:'h',index:rN}; }
+      return null;
     }
 
-    // Rearrange & Reset buttons (same behavior as before)
-    board.querySelector('[data-action="reset"]').addEventListener('click', () => {
-      resetBoard(grid, circles);
+    field.addEventListener('click', (e)=>{
+      if(!drawArmed) return; // must press each time
+      const rect = field.getBoundingClientRect();
+      const x=(e.clientX-rect.left)*(field.width/rect.width);
+      const y=(e.clientY-rect.top)*(field.height/rect.height);
+      const cut=nearestCut(x,y);
+      if(cut){ if(cut.type==='v') vCuts.add(cut.index); if(cut.type==='h') hCuts.add(cut.index); }
+      drawArmed=false; draw();
     });
 
-    board.querySelector('[data-action="rearrange"]').addEventListener('click', () => {
-      rearrangeBoard(grid, circles);
+    // UI
+    document.getElementById('applyExpr').addEventListener('click', ()=>{
+      const p=parseExpr(document.getElementById('expr').value); if(!p) return;
+      W=p.w; H=p.h; vCuts.clear(); hCuts.clear(); showAreas=false; showProductOnly=false; draw();
     });
+    document.getElementById('toggleTheme').addEventListener('change', e=>{ lightTheme=e.target.checked; draw(); });
+    document.getElementById('toggleDots').addEventListener('change', e=>{ showDots=e.target.checked; draw(); });
+    document.getElementById('drawPartition').addEventListener('click', ()=>{ drawArmed=true; });
+    document.getElementById('resetPartitions').addEventListener('click', ()=>{ vCuts.clear(); hCuts.clear(); draw(); });
+    document.getElementById('toggleAreas').addEventListener('click', ()=>{ showAreas=!showAreas; draw(); });
+    document.getElementById('showProduct').addEventListener('click', ()=>{ showProductOnly=!showProductOnly; draw(); });
 
-    // === One-shot Draw Partition for THIS board ===
-    let drawMode = false;      // single-use flag
-    let start = null;          // start point in overlay coords
-    let previewRect = null;    // SVG rect for live preview
-    const savedRects = [];     // keep drawn partitions (optional)
-
-    drawBtn.addEventListener('click', () => {
-      drawMode = true;         // enable once
-      start = null;
-      removePreview();
-      overlay.style.pointerEvents = 'auto'; // allow capturing drag
-      // (Optional): visual feedback on the button for one-shot
-      drawBtn.textContent = 'Draw (active)';
-      drawBtn.disabled = true; // prevent re-click until complete
-    });
-
-    // Map from client to overlay SVG coordinates (viewBox 0..1000)
-    function clientToSvg(evt) {
-      const rect = overlay.getBoundingClientRect();
-      const x = ((evt.clientX - rect.left) / rect.width) * 1000;
-      const y = ((evt.clientY - rect.top)  / rect.height) * 1000;
-      return { x, y };
-    }
-
-    overlay.addEventListener('mousedown', (e) => {
-      if (!drawMode) return;
-      start = clientToSvg(e);
-      // set up preview rect
-      previewRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      previewRect.setAttribute('fill', 'rgba(37,99,235,0.08)');
-      previewRect.setAttribute('stroke', '#2563eb');
-      previewRect.setAttribute('stroke-width', '3');
-      previewRect.setAttribute('stroke-dasharray', '6 6');
-      overlay.appendChild(previewRect);
-    });
-
-    window.addEventListener('mousemove', (e) => {
-      if (!drawMode || !start || !previewRect) return;
-      const p = clientToSvg(e);
-      const x = Math.min(start.x, p.x);
-      const y = Math.min(start.y, p.y);
-      const w = Math.abs(p.x - start.x);
-      const h = Math.abs(p.y - start.y);
-      previewRect.setAttribute('x', x);
-      previewRect.setAttribute('y', y);
-      previewRect.setAttribute('width', w);
-      previewRect.setAttribute('height', h);
-    });
-
-    window.addEventListener('mouseup', (e) => {
-      if (!drawMode || !start || !previewRect) return;
-
-      // finalize the rectangle
-      previewRect.setAttribute('stroke-dasharray', '');
-      previewRect.setAttribute('fill', 'rgba(37,99,235,0.12)');
-      savedRects.push({
-        x: +previewRect.getAttribute('x'),
-        y: +previewRect.getAttribute('y'),
-        width: +previewRect.getAttribute('width'),
-        height: +previewRect.getAttribute('height'),
-      });
-
-      // turn OFF one-shot mode immediately
-      drawMode = false;
-      start = null;
-      previewRect = null;
-      overlay.style.pointerEvents = 'none';
-      drawBtn.textContent = 'Draw Partition';
-      drawBtn.disabled = false;
-    });
-
-    // Allow cancel with Escape during active draw
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && drawMode) {
-        drawMode = false;
-        start = null;
-        removePreview();
-        overlay.style.pointerEvents = 'none';
-        drawBtn.textContent = 'Draw Partition';
-        drawBtn.disabled = false;
-      }
-    });
-
-    function removePreview() {
-      if (previewRect && previewRect.parentNode) {
-        previewRect.parentNode.removeChild(previewRect);
-      }
-      previewRect = null;
-    }
-  }
-
-  // Reset: restore 5 red + 5 white per row and clear clicks; restore DOM order
-  function resetBoard(grid, circles) {
-    circles.forEach((el, idx) => {
-      const col = idx % 10;
-      el.className = 'circle ' + (col < 5 ? 'red' : 'white');
-      el.dataset.original = (col < 5 ? 'red' : 'white');
-    });
-    grid.innerHTML = '';
-    circles.forEach(el => grid.appendChild(el));
-    // Also clear any SVG overlay rects in this board
-    const overlay = grid.parentElement.querySelector('.overlay');
-    if (overlay) overlay.innerHTML = '';
-  }
-
-  // Rearrange: clicked first (keep their red/white + blue dot), then unclicked packed to 5R/5W per row
-  function rearrangeBoard(grid, circles) {
-    const clicked   = circles.filter(el => el.classList.contains('clicked'));
-    const unclicked = circles.filter(el => !el.classList.contains('clicked'));
-
-    // Count remaining unclicked reds/whites
-    const pool = {
-      red:   unclicked.filter(el => el.classList.contains('red')),
-      white: unclicked.filter(el => el.classList.contains('white')),
-    };
-
-    // Start with clicked ones first
-    const order = [...clicked];
-
-    // Fill remaining cells row-by-row trying for 5 red then 5 white each row
-    const total = circles.length;
-    const remainingSlots = total - clicked.length;
-
-    for (let i = 0; i < remainingSlots; i++) {
-      const col = (order.length % 10);
-      const target = col < 5 ? 'red' : 'white';
-      let nextEl = null;
-      if (pool[target].length) nextEl = pool[target].shift();
-      else {
-        const other = target === 'red' ? 'white' : 'red';
-        if (pool[other].length) nextEl = pool[other].shift();
-      }
-      if (nextEl) order.push(nextEl);
-    }
-
-    // Apply new DOM order
-    grid.innerHTML = '';
-    order.forEach(el => grid.appendChild(el));
-  }
-
-})();
-</script>
+    draw();
+  </script>
 </body>
 </html>

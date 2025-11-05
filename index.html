@@ -1,649 +1,216 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Partition Method – Expression Input + Show Calculations</title>
+<title>Multiple 10×10 Arrays – Red/White with Click Dots</title>
 <style>
-  /* THEME VARIABLES */
-  :root{
-    --bg:#0b0d10;      --ui:#11151a;     --ink:#e8eef6;    --muted:#aeb6c2;
-    --dot:#ffffff;     --border:#1c222a; --accent:#56a0ff; --accent2:#ffa756;
-    --split:#ffd7a8;   --canvas:#0a0d11;
+  :root {
+    --cell: 40px;
+    --gap: 8px;
+    --dot: 14px;
+    --red: #ef4444;
+    --blue: #2563eb;
   }
-  body.light{
-    --bg:#ffffff;      --ui:#f3f6fa;     --ink:#0b0d10;    --muted:#5a6573;
-    --dot:#000000;     --border:#d5dbe6; --accent:#1565c0; --accent2:#ef6c00;
-    --split:#b26a00;   --canvas:#ffffff;
+  body {
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    background: #f7f7f9;
+    margin: 0;
+    padding: 20px;
+    display: grid;
+    gap: 16px;
+    justify-items: center;
+  }
+  header {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  button, .tiny {
+    appearance: none; border: 0; border-radius: 8px;
+    padding: 10px 14px; background: #10b981; color: #fff;
+    font-weight: 600; cursor: pointer;
+  }
+  button:hover { background: #059669; }
+  .tiny {
+    padding: 6px 10px; font-size: 12px; background: #374151;
+  }
+  #boards {
+    width: min(1000px, 96vw);
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+    gap: 20px;
+  }
+  .board {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+    padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    display: grid; gap: 12px;
+  }
+  .board-header {
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(10, var(--cell));
+    gap: var(--gap);
+    justify-content: center;
+  }
+  .circle {
+    width: var(--cell); height: var(--cell);
+    border-radius: 50%;
+    border: 1px solid #9ca3af;
+    position: relative; /* needed for the blue dot */
+    box-sizing: border-box;
+    cursor: pointer;
+    transition: transform .08s ease;
+  }
+  .circle:hover { transform: scale(1.05); }
+
+  .red   { background: var(--red); }
+  .white { background: #ffffff; }
+
+  /* Blue dot appears when clicked */
+  .clicked::after {
+    content: "";
+    position: absolute;
+    width: var(--dot); height: var(--dot);
+    border-radius: 50%;
+    background: var(--blue);
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 0 2px rgba(255,255,255,.7); /* subtle halo on red */
   }
 
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Inter,Roboto,Arial,sans-serif}
-  header{padding:14px 18px;background:var(--ui);position:sticky;top:0;z-index:3;border-bottom:1px solid var(--border)}
-  header h1{margin:0;font-size:16px;font-weight:600}
-  .wrap{display:grid;grid-template-columns:320px 1fr;gap:14px;padding:14px}
-  @media (max-width: 900px){ .wrap{grid-template-columns:1fr} }
-  .panel{background:var(--ui);border:1px solid var(--border);border-radius:12px;padding:12px}
-  .panel h2{margin:0 0 8px 0;font-size:14px;color:var(--muted);font-weight:600}
-  .row{display:grid;grid-template-columns:1fr 170px;gap:8px;align-items:center;margin:8px 0}
-  label{font-size:13px}
-  input[type="number"], select, input[type="text"]{
-    width:100%;background:color-mix(in oklab, var(--ui), black 6%);color:var(--ink);
-    border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:14px;
+  .badge {
+    background: #e5e7eb; color: #111827; border-radius: 999px;
+    padding: 4px 8px; font-size: 12px; font-weight: 600;
   }
-  .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-  button{
-    background:color-mix(in oklab, var(--ui), black 4%);color:var(--ink);
-    border:1px solid color-mix(in oklab, var(--border), black 6%);border-radius:10px;
-    padding:9px 12px;font-size:14px;cursor:pointer
-  }
-  button:hover{border-color:color-mix(in oklab, var(--accent), black 20%)}
-  .mode-pill{font-size:12px;padding:2px 8px;border:1px solid color-mix(in oklab, var(--accent), black 30%);border-radius:999px;background:color-mix(in oklab, var(--ui), black 8%);color:var(--ink)}
-
-  #equation{font-variant-numeric:tabular-nums;line-height:1.35;background:color-mix(in oklab, var(--ui), black 6%);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:8px;display:none}
-  #equation.show{display:block}
-
-  .note{color:var(--muted);font-size:12px;margin-top:8px}
-  .canvasWrap{position:relative;overflow:auto;background:var(--canvas);border:1px solid var(--border);border-radius:12px;height:72vh;min-height:420px}
-  svg{display:block}
-
-  .legend{display:flex;gap:10px;align-items:center;font-size:12px;color:var(--muted);margin-top:6px}
-  .swatch{width:14px;height:14px;border-radius:3px;display:inline-block;border:1px solid #0004}
-
-  /* Floating canvas button */
-  .fab{
-    position:absolute;right:12px;bottom:12px;z-index:2;
-    display:inline-flex;align-items:center;gap:8px;
-    background:var(--accent);color:#fff;border:none;border-radius:999px;padding:10px 14px;font-weight:600;
-    box-shadow:0 6px 18px color-mix(in oklab, var(--accent), black 40%);
-  }
-  .fab[disabled]{opacity:.6;cursor:not-allowed}
 </style>
 </head>
 <body>
-<header><h1>Partition Method – Expression Input + Show Calculations</h1></header>
+  <header>
+    <button id="addBoard">Add 10×10 Array</button>
+    <button id="removeBoard" class="tiny">Remove last</button>
+  </header>
 
-<div class="wrap">
-  <div class="panel">
-    <h2>Controls</h2>
-
-    <div class="row">
-      <label>Dots across (columns)</label>
-      <input id="gridCols" type="number" min="5" max="60" value="20">
-    </div>
-    <div class="row">
-      <label>Dots down (rows)</label>
-      <input id="gridRows" type="number" min="5" max="60" value="20">
-    </div>
-
-    <div class="row">
-      <label>Rectangle (w × h)</label>
-      <input id="expr" type="text" placeholder="e.g., 4 x 3" aria-label="Enter rectangle as width by height">
-    </div>
-
-    <div class="row">
-      <label>Split direction</label>
-      <select id="splitDir">
-        <option value="vertical">Vertical (split columns)</option>
-        <option value="horizontal">Horizontal (split rows)</option>
-      </select>
-    </div>
-    <div class="row">
-      <label>Split at</label>
-      <input id="splitAt" type="number" min="1" value="2">
-    </div>
-
-    <div class="btns">
-      <button id="clearPartitionBtn">Clear partition</button>
-      <button id="toggleCalcBtn">Show calculations</button>
-      <button id="reset">Reset</button>
-      <button id="export">Export PNG</button>
-      <span id="modeBadge" class="mode-pill" style="display:none">Mode: Draw partition</span>
-    </div>
-
-    <div class="row">
-      <label>Theme</label>
-      <select id="themeSelect">
-        <option value="dark">Dark (white dots)</option>
-        <option value="light">Light (black dots)</option>
-      </select>
-    </div>
-
-    <div id="equation" aria-live="polite"></div>
-
-    <div class="legend">
-      <span class="swatch" style="background:#56a0ff66"></span> Part A
-      <span class="swatch" style="background:#ffa75666"></span> Part B
-      <span class="swatch" style="background:#ffffff; border:1px solid #0004"></span> Dots
-    </div>
-    <div class="note">
-      • Drag from one dot to another to draw the rectangle.<br>
-      • Press the floating <b>Draw partition</b> button (or just drag inside) to create a split.<br>
-      • When a split exists, the total label on that side is hidden; only the two split values show.
-    </div>
-  </div>
-
-  <div class="panel canvasWrap">
-    <!-- Floating Draw Partition button on the CANVAS -->
-    <button id="fabDraw" class="fab" title="Draw partition">➕ Draw partition</button>
-    <svg id="board" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Dot grid with draggable rectangle and optional partition"></svg>
-  </div>
-</div>
+  <div id="boards"></div>
 
 <script>
 (function(){
-  // ===== Geometry (cell-based; dots at cell centers) =====
-  const S = 28;      // spacing
-  const R = 3.2;     // dot radius (slightly larger)
-  const PAD = 30;    // canvas padding
+  const boardsEl = document.getElementById('boards');
+  const addBtn   = document.getElementById('addBoard');
+  const rmBtn    = document.getElementById('removeBoard');
+  let boardCount = 0;
 
-  // DOM
-  const svg = document.getElementById('board');
-  const gridCols = document.getElementById('gridCols');
-  const gridRows = document.getElementById('gridRows');
-  const splitDir = document.getElementById('splitDir');
-  const splitAt  = document.getElementById('splitAt');
-  const equation = document.getElementById('equation');
-  const btnReset = document.getElementById('reset');
-  const btnExport = document.getElementById('export');
-  const btnClearPartition = document.getElementById('clearPartitionBtn');
-  const toggleCalcBtn = document.getElementById('toggleCalcBtn');
-  const modeBadge = document.getElementById('modeBadge');
-  const themeSelect = document.getElementById('themeSelect');
-  const fabDraw = document.getElementById('fabDraw');
-  const exprInput = document.getElementById('expr');
+  addBtn.addEventListener('click', () => createBoard());
+  rmBtn.addEventListener('click', () => {
+    if (boardsEl.lastElementChild) boardsEl.lastElementChild.remove();
+  });
 
-  // State
-  let cols = +gridCols.value;
-  let rows = +gridRows.value;
+  // Create one board by default
+  createBoard();
 
-  // Rectangle (top-left cell index) + size in cells
-  let rX = 1, rY = 1, rW = 13, rH = 3;
+  function createBoard() {
+    boardCount++;
+    const board = document.createElement('section');
+    board.className = 'board';
 
-  // Partition
-  let hasSplit = false;
-  let partDir = 'vertical';  // 'vertical' or 'horizontal'
-  let sAt = 2;               // 1..size-1 when hasSplit
+    board.innerHTML = `
+      <div class="board-header">
+        <div class="badge">Array ${boardCount}</div>
+        <div class="controls">
+          <button data-action="rearrange">Rearrange</button>
+          <button data-action="reset" class="tiny">Reset</button>
+        </div>
+      </div>
+      <div class="grid"></div>
+    `;
 
-  // Calculations overlay toggle
-  let calcVisible = false;
+    const grid = board.querySelector('.grid');
+    boardsEl.appendChild(board);
 
-  // Interaction
-  // Modes: newRect | moveRect | moveSplit | drawSplit
-  let dragMode = null;
-  let dragData = null;
-  let drawSplitArmed = false;
-
-  // Utils
-  const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
-  const sizeSVG = ()=>{
-    const w = PAD*2 + cols*S;
-    const h = PAD*2 + rows*S;
-    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
-    svg.setAttribute('width', w);
-    svg.setAttribute('height', h);
-  };
-  const cx = c => PAD + (c + 0.5) * S;
-  const cy = r => PAD + (r + 0.5) * S;
-
-  function snapToCell(x,y){
-    const c = clamp(Math.round((x - PAD - 0.5*S)/S), 0, cols-1);
-    const r = clamp(Math.round((y - PAD - 0.5*S)/S), 0, rows-1);
-    return {c,r};
-  }
-
-  // Rect helpers
-  const rectX = ()=> PAD + rX*S;
-  const rectY = ()=> PAD + rY*S;
-  const rectW = ()=> rW*S;
-  const rectH = ()=> rH*S;
-  function insideRectCell(c,r){ return c>=rX && c<rX+rW && r>=rY && r<rY+rH; }
-  function nearSplit(px,py){
-    if (!hasSplit) return false;
-    if (partDir==='vertical'){
-      const x = rectX() + sAt*S;
-      return Math.abs(px - x) <= 8 && py >= rectY() && py <= rectY() + rectH();
-    } else {
-      const y = rectY() + sAt*S;
-      return Math.abs(py - y) <= 8 && px >= rectX() && px <= rectX() + rectW();
-    }
-  }
-  function enforceSplitClamp(){
-    if (!hasSplit) return;
-    if (partDir==='vertical'){
-      sAt = clamp(sAt, 1, Math.max(1, rW-1));
-      splitAt.min = 1; splitAt.max = Math.max(1, rW-1);
-    } else {
-      sAt = clamp(sAt, 1, Math.max(1, rH-1));
-      splitAt.min = 1; splitAt.max = Math.max(1, rH-1);
-    }
-    splitAt.value = sAt;
-  }
-
-  // ===== Draw =====
-  function draw(){
-    cols = clamp(+gridCols.value,5,60);
-    rows = clamp(+gridRows.value,5,60);
-    sizeSVG();
-
-    // keep rectangle inside grid
-    rW = clamp(rW,1,cols); rH = clamp(rH,1,rows);
-    rX = clamp(rX,0,cols - rW); rY = clamp(rY,0,rows - rH);
-
-    enforceSplitClamp();
-
-    while (svg.firstChild) svg.removeChild(svg.firstChild);
-
-    // dots
-    const gDots = document.createElementNS('http://www.w3.org/2000/svg','g');
-    const dotColor = getComputedStyle(document.body).getPropertyValue('--dot').trim();
-    for(let rr=0; rr<rows; rr++){
-      for(let cc=0; cc<cols; cc++){
-        const dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
-        dot.setAttribute('cx', cx(cc));
-        dot.setAttribute('cy', cy(rr));
-        dot.setAttribute('r', R);
-        dot.setAttribute('fill', dotColor);
-        gDots.appendChild(dot);
-      }
-    }
-    svg.appendChild(gDots);
-
-    // partition fills + line
-    if (hasSplit){
-      const gArea = document.createElementNS('http://www.w3.org/2000/svg','g');
-      if (partDir==='vertical'){
-        const aW = sAt, bW = rW - sAt;
-        if (aW>0){
-          const ra = document.createElementNS('http://www.w3.org/2000/svg','rect');
-          ra.setAttribute('x', rectX()); ra.setAttribute('y', rectY());
-          ra.setAttribute('width', aW*S); ra.setAttribute('height', rH*S);
-          ra.setAttribute('fill','var(--accent)'); ra.setAttribute('fill-opacity','0.40');
-          gArea.appendChild(ra);
-        }
-        if (bW>0){
-          const rb = document.createElementNS('http://www.w3.org/2000/svg','rect');
-          rb.setAttribute('x', rectX() + aW*S); rb.setAttribute('y', rectY());
-          rb.setAttribute('width', bW*S); rb.setAttribute('height', rH*S);
-          rb.setAttribute('fill','var(--accent2)'); rb.setAttribute('fill-opacity','0.40');
-          gArea.appendChild(rb);
-        }
-        const lx = rectX() + sAt*S;
-        const line = document.createElementNS('http://www.w3.org/2000/svg','line');
-        line.setAttribute('x1', lx); line.setAttribute('x2', lx);
-        line.setAttribute('y1', rectY()); line.setAttribute('y2', rectY() + rH*S);
-        line.setAttribute('stroke','var(--split)'); line.setAttribute('stroke-width','2.2');
-        gArea.appendChild(line);
-      } else {
-        const aH = sAt, bH = rH - sAt;
-        if (aH>0){
-          const ra = document.createElementNS('http://www.w3.org/2000/svg','rect');
-          ra.setAttribute('x', rectX()); ra.setAttribute('y', rectY());
-          ra.setAttribute('width', rW*S); ra.setAttribute('height', aH*S);
-          ra.setAttribute('fill','var(--accent)'); ra.setAttribute('fill-opacity','0.40');
-          gArea.appendChild(ra);
-        }
-        if (bH>0){
-          const rb = document.createElementNS('http://www.w3.org/2000/svg','rect');
-          rb.setAttribute('x', rectX()); rb.setAttribute('y', rectY() + aH*S);
-          rb.setAttribute('width', rW*S); rb.setAttribute('height', bH*S);
-          rb.setAttribute('fill','var(--accent2)'); rb.setAttribute('fill-opacity','0.40');
-          gArea.appendChild(rb);
-        }
-        const ly = rectY() + sAt*S;
-        const line = document.createElementNS('http://www.w3.org/2000/svg','line');
-        line.setAttribute('x1', rectX()); line.setAttribute('x2', rectX() + rW*S);
-        line.setAttribute('y1', ly); line.setAttribute('y2', ly);
-        line.setAttribute('stroke','var(--split)'); line.setAttribute('stroke-width','2.2');
-        gArea.appendChild(line);
-      }
-      svg.appendChild(gArea);
-    }
-
-    // rectangle border
-    const border = document.createElementNS('http://www.w3.org/2000/svg','rect');
-    border.setAttribute('x', rectX()); border.setAttribute('y', rectY());
-    border.setAttribute('width', rectW()); border.setAttribute('height', rectH());
-    border.setAttribute('fill','none'); border.setAttribute('stroke','var(--accent)');
-    border.setAttribute('stroke-width','2.6');
-    svg.appendChild(border);
-
-    // labels + overlay
-    addLabels(calcVisible);
-    updateEquation(calcVisible);
-
-    // UI state
-    splitDir.disabled = !hasSplit ? false : false; // always editable; direction can change
-    splitAt.disabled  = !hasSplit;
-    fabDraw.disabled = false;
-    fabDraw.style.display = 'inline-flex';
-    modeBadge.style.display = (drawSplitArmed) ? 'inline-block' : 'none';
-  }
-
-  function addLabels(showAreas){
-    const g = document.createElementNS('http://www.w3.org/2000/svg','g');
-    g.setAttribute('font-size','14'); /* labels larger */
-    g.setAttribute('fill','var(--ink)');
-
-    const topTotalY = rectY() - 12;
-    const leftTotalX = rectX() - 12;
-
-    // TOTALS (hide total on split side if split exists)
-    if (!(hasSplit && partDir==='vertical')){
-      const topX = rectX() + (rW*S)/2;
-      const tTop = document.createElementNS('http://www.w3.org/2000/svg','text');
-      tTop.setAttribute('x', topX); tTop.setAttribute('y', Math.max(12, topTotalY));
-      tTop.setAttribute('text-anchor','middle'); tTop.textContent = `${rW}`;
-      g.appendChild(tTop);
-    }
-    if (!(hasSplit && partDir==='horizontal')){
-      const leftY = rectY() + (rH*S)/2 + 5;
-      const tLeft = document.createElementNS('http://www.w3.org/2000/svg','text');
-      tLeft.setAttribute('x', Math.max(10,leftTotalX)); tLeft.setAttribute('y', leftY);
-      tLeft.setAttribute('text-anchor','middle'); tLeft.textContent = `${rH}`;
-      g.appendChild(tLeft);
-    }
-
-    // SUB-LABELS on the split side
-    if (hasSplit){
-      if (partDir==='vertical'){
-        const aW = sAt, bW = rW - sAt;
-        if (aW>0){
-          const txA = rectX() + (aW*S)/2;
-          const tA = document.createElementNS('http://www.w3.org/2000/svg','text');
-          tA.setAttribute('x', txA); tA.setAttribute('y', Math.max(12, topTotalY-12));
-          tA.setAttribute('text-anchor','middle'); tA.textContent = `${aW}`;
-          g.appendChild(tA);
-        }
-        if (bW>0){
-          const txB = rectX() + aW*S + (bW*S)/2;
-          const tB = document.createElementNS('http://www.w3.org/2000/svg','text');
-          tB.setAttribute('x', txB); tB.setAttribute('y', Math.max(12, topTotalY-12));
-          tB.setAttribute('text-anchor','middle'); tB.textContent = `${bW}`;
-          g.appendChild(tB);
-        }
-      } else {
-        const aH = sAt, bH = rH - sAt;
-        if (aH>0){
-          const lyA = rectY() + (aH*S)/2 + 5;
-          const tA = document.createElementNS('http://www.w3.org/2000/svg','text');
-          tA.setAttribute('x', Math.max(10, rectX()-14)); tA.setAttribute('y', lyA);
-          tA.setAttribute('text-anchor','middle'); tA.textContent = `${aH}`;
-          g.appendChild(tA);
-        }
-        if (bH>0){
-          const lyB = rectY() + aH*S + (bH*S)/2 + 5;
-          const tB = document.createElementNS('http://www.w3.org/2000/svg','text');
-          tB.setAttribute('x', Math.max(10, rectX()-14)); tB.setAttribute('y', lyB);
-          tB.setAttribute('text-anchor','middle'); tB.textContent = `${bH}`;
-          g.appendChild(tB);
-        }
+    // Build initial pattern
+    const circles = [];
+    for (let r = 0; r < 10; r++) {
+      for (let c = 0; c < 10; c++) {
+        const el = document.createElement('div');
+        el.className = 'circle ' + (c < 5 ? 'red' : 'white');
+        el.dataset.original = (c < 5 ? 'red' : 'white');
+        el.addEventListener('click', () => {
+          el.classList.toggle('clicked'); // blue dot on/off
+        });
+        grid.appendChild(el);
+        circles.push(el);
       }
     }
 
-    // AREA OVERLAY (centered numbers)
-    if (showAreas){
-      const overlay = document.createElementNS('http://www.w3.org/2000/svg','g');
-      overlay.setAttribute('font-size','16'); overlay.setAttribute('font-weight','700');
-      overlay.setAttribute('fill','var(--ink)');
+    // Button handlers
+    board.querySelector('[data-action="reset"]').addEventListener('click', () => {
+      resetBoard(grid, circles);
+    });
 
-      if (!hasSplit){
-        const centerX = rectX() + (rW*S)/2;
-        const centerY = rectY() + (rH*S)/2 + 6;
-        const t = document.createElementNS('http://www.w3.org/2000/svg','text');
-        t.setAttribute('x', centerX); t.setAttribute('y', centerY);
-        t.setAttribute('text-anchor','middle'); t.textContent = (rW*rH).toString();
-        overlay.appendChild(t);
-      } else if (partDir==='vertical'){
-        const aW = sAt, bW = rW - sAt;
-        if (aW>0){
-          const centerX = rectX() + (aW*S)/2;
-          const centerY = rectY() + (rH*S)/2 + 6;
-          const t = document.createElementNS('http://www.w3.org/2000/svg','text');
-          t.setAttribute('x', centerX); t.setAttribute('y', centerY);
-          t.setAttribute('text-anchor','middle'); t.textContent = (aW*rH).toString();
-          overlay.appendChild(t);
-        }
-        if (bW>0){
-          const centerX = rectX() + aW*S + (bW*S)/2;
-          const centerY = rectY() + (rH*S)/2 + 6;
-          const t = document.createElementNS('http://www.w3.org/2000/svg','text');
-          t.setAttribute('x', centerX); t.setAttribute('y', centerY);
-          t.setAttribute('text-anchor','middle'); t.textContent = (bW*rH).toString();
-          overlay.appendChild(t);
-        }
-      } else {
-        const aH = sAt, bH = rH - sAt;
-        if (aH>0){
-          const centerX = rectX() + (rW*S)/2;
-          const centerY = rectY() + (aH*S)/2 + 6;
-          const t = document.createElementNS('http://www.w3.org/2000/svg','text');
-          t.setAttribute('x', centerX); t.setAttribute('y', centerY);
-          t.setAttribute('text-anchor','middle'); t.textContent = (aH*rW).toString();
-          overlay.appendChild(t);
-        }
-        if (bH>0){
-          const centerX = rectX() + (rW*S)/2;
-          const centerY = rectY() + aH*S + (bH*S)/2 + 6;
-          const t = document.createElementNS('http://www.w3.org/2000/svg','text');
-          t.setAttribute('x', centerX); t.setAttribute('y', centerY);
-          t.setAttribute('text-anchor','middle'); t.textContent = (bH*rW).toString();
-          overlay.appendChild(t);
-        }
-      }
-      svg.appendChild(overlay);
-    }
-
-    svg.appendChild(g);
+    board.querySelector('[data-action="rearrange"]').addEventListener('click', () => {
+      rearrangeBoard(grid, circles);
+    });
   }
 
-  function updateEquation(show){
-    const total = rW * rH;
-    if (!show){
-      equation.classList.remove('show');
-      equation.innerHTML = '';
-      return;
-    }
-    equation.classList.add('show');
-    if (!hasSplit){
-      equation.innerHTML =
-        `<div><b>Before:</b> ${rH} × ${rW} = <b>${total}</b></div>`+
-        `<div><i>After:</i> (no partition yet)</div>`;
-      return;
-    }
-    if (partDir==='vertical'){
-      const a = sAt, b = rW - sAt;
-      const p1 = rH*a, p2 = rH*b;
-      equation.innerHTML =
-        `<div><b>Before:</b> ${rH} × ${rW} = <b>${total}</b></div>`+
-        `<div><b>After:</b> (${rH} × ${a}) + (${rH} × ${b}) = ${p1} + ${p2} = <b>${total}</b></div>`;
-    } else {
-      const a = sAt, b = rH - sAt;
-      const p1 = rW*a, p2 = rW*b;
-      equation.innerHTML =
-        `<div><b>Before:</b> ${rH} × ${rW} = <b>${total}</b></div>`+
-        `<div><b>After:</b> (${a} × ${rW}) + (${b} × ${rW}) = ${p1} + ${p2} = <b>${total}</b></div>`;
-    }
+  // Reset to 5 red + 5 white per row and clear clicks
+  function resetBoard(grid, circles) {
+    circles.forEach((el, idx) => {
+      const col = idx % 10;
+      el.classList.remove('clicked', 'red', 'white');
+      const base = (col < 5 ? 'red' : 'white');
+      el.classList.add(base);
+      el.dataset.original = base;
+    });
+    // Restore DOM order to original grid order
+    grid.innerHTML = '';
+    circles.forEach(el => grid.appendChild(el));
   }
 
-  // Parse expression like "4 x 3", "4×3", "4*3", spaces allowed
-  function applyExpr(text){
-    const cleaned = text.toLowerCase().replace(/×/g,'x').replace(/\*/g,'x').trim();
-    const m = cleaned.match(/^\s*(\d+)\s*[x]\s*(\d+)\s*$/);
-    if (!m) return false;
-    const w = +m[1], h = +m[2];
-    if (!w || !h) return false;
-    rW = clamp(w,1,cols); rH = clamp(h,1,rows);
-    rX = clamp(rX,0,cols - rW); rY = clamp(rY,0,rows - rH);
-    enforceSplitClamp();
-    draw();
-    return true;
-  }
+  // Rearrange: clicked first (keep original colours), then unclicked packed to 5R/5W per row
+  function rearrangeBoard(grid, circles) {
+    const clicked   = circles.filter(el => el.classList.contains('clicked'));
+    const unclicked = circles.filter(el => !el.classList.contains('clicked'));
 
-  // Pointer helpers
-  function svgPt(e){
-    const pt = svg.createSVGPoint();
-    pt.x = e.clientX; pt.y = e.clientY;
-    return pt.matrixTransform(svg.getScreenCTM().inverse());
-  }
-
-  // Interaction
-  svg.addEventListener('pointerdown', (e)=>{
-    const p = svgPt(e);
-    const g = snapToCell(p.x, p.y);
-
-    if (nearSplit(p.x, p.y)){
-      dragMode = 'moveSplit'; dragData = {};
-    } else if ((!hasSplit || drawSplitArmed) && insideRectCell(g.c, g.r)){
-      dragMode = 'drawSplit'; dragData = { startC: g.c, startR: g.r };
-    } else if (insideRectCell(g.c, g.r)){
-      dragMode = 'moveRect'; dragData = { startC: g.c, startR: g.r, startX: rX, startY: rY };
-    } else {
-      dragMode = 'newRect'; dragData = { startC: g.c, startR: g.r };
-    }
-    svg.setPointerCapture(e.pointerId);
-  });
-
-  svg.addEventListener('pointermove', (e)=>{
-    if (!dragMode) return;
-    const p = svgPt(e);
-    const g = snapToCell(p.x, p.y);
-
-    if (dragMode==='newRect'){
-      const minC = Math.min(dragData.startC, g.c);
-      const maxC = Math.max(dragData.startC, g.c);
-      const minR = Math.min(dragData.startR, g.r);
-      const maxR = Math.max(dragData.startR, g.r);
-      rX = clamp(minC,0,cols-1);
-      rY = clamp(minR,0,rows-1);
-      rW = clamp((maxC - minC) + 1, 1, cols - rX);
-      rH = clamp((maxR - minR) + 1, 1, rows - rY);
-      enforceSplitClamp();
-      draw();
-    }
-    else if (dragMode==='moveRect'){
-      const dC = g.c - dragData.startC;
-      const dR = g.r - dragData.startR;
-      rX = clamp(dragData.startX + dC, 0, cols - rW);
-      rY = clamp(dragData.startY + dR, 0, rows - rH);
-      draw();
-    }
-    else if (dragMode==='moveSplit' && hasSplit){
-      if (partDir==='vertical'){
-        const relC = clamp(g.c - rX, 1, Math.max(1, rW-1));
-        sAt = relC;
-      } else {
-        const relR = clamp(g.r - rY, 1, Math.max(1, rH-1));
-        sAt = relR;
-      }
-      splitAt.value = sAt;
-      draw();
-    }
-    else if (dragMode==='drawSplit'){
-      const dC = g.c - dragData.startC;
-      const dR = g.r - dragData.startR;
-      if (Math.abs(dC) >= Math.abs(dR)){
-        partDir = 'vertical'; splitDir.value = 'vertical';
-        const endC = clamp(g.c, rX, rX + rW - 1);
-        sAt = clamp(endC - rX, 1, Math.max(1, rW-1));
-      } else {
-        partDir = 'horizontal'; splitDir.value = 'horizontal';
-        const endR = clamp(g.r, rY, rY + rH - 1);
-        sAt = clamp(endR - rY, 1, Math.max(1, rH-1));
-      }
-      hasSplit = true;
-      splitAt.value = sAt;
-      draw();
-    }
-  });
-
-  window.addEventListener('pointerup', (e)=>{
-    dragMode = null; dragData = null;
-    drawSplitArmed = false; // exit draw mode after creating a split
-    if (e.pointerId) try{ svg.releasePointerCapture(e.pointerId); }catch{}
-    draw();
-  });
-
-  // Inputs
-  gridCols.addEventListener('input', draw);
-  gridRows.addEventListener('input', draw);
-
-  splitDir.addEventListener('input', ()=>{ enforceSplitClamp(); draw(); });
-  splitAt.addEventListener('input', ()=>{
-    let v = +splitAt.value || 1;
-    sAt = v; enforceSplitClamp(); draw();
-  });
-
-  themeSelect.addEventListener('input', ()=>{
-    if (themeSelect.value === 'light'){ document.body.classList.add('light'); }
-    else { document.body.classList.remove('light'); }
-    draw();
-  });
-
-  // Expression input: apply on Enter or blur
-  exprInput.addEventListener('keydown', (e)=>{
-    if (e.key === 'Enter'){ applyExpr(exprInput.value); }
-  });
-  exprInput.addEventListener('blur', ()=>{ if (exprInput.value.trim()) applyExpr(exprInput.value); });
-
-  // Floating Draw Partition on canvas
-  fabDraw.addEventListener('click', ()=>{
-    drawSplitArmed = true;
-    draw();
-  });
-
-  // Clear split
-  btnClearPartition.addEventListener('click', ()=>{
-    hasSplit = false;
-    drawSplitArmed = false;
-    draw();
-  });
-
-  // Toggle calculations panel + overlay
-  toggleCalcBtn.addEventListener('click', ()=>{
-    calcVisible = !calcVisible;
-    toggleCalcBtn.textContent = calcVisible ? 'Hide calculations' : 'Show calculations';
-    draw();
-  });
-
-  // Reset / Export
-  btnReset.addEventListener('click', ()=>{
-    gridCols.value = 20; gridRows.value = 20;
-    rW = 13; rH = 3; rX = 1; rY = 1;
-    hasSplit = false; partDir = 'vertical'; sAt = 2; splitAt.value = 2;
-    drawSplitArmed = false; calcVisible = false; toggleCalcBtn.textContent = 'Show calculations';
-    themeSelect.value = 'dark'; document.body.classList.remove('light');
-    exprInput.value = '';
-    draw();
-  });
-
-  btnExport.addEventListener('click', ()=>{
-    const serializer = new XMLSerializer();
-    const src = serializer.serializeToString(svg);
-    const img = new Image();
-    const blob = new Blob([src], {type:'image/svg+xml;charset=utf-8'});
-    const url = URL.createObjectURL(blob);
-    img.onload = function(){
-      const canvas = document.createElement('canvas');
-      canvas.width = svg.viewBox.baseVal.width;
-      canvas.height = svg.viewBox.baseVal.height;
-      const ctx = canvas.getContext('2d');
-      const bg = getComputedStyle(document.body).getPropertyValue('--canvas').trim() || '#ffffff';
-      ctx.fillStyle = bg; ctx.fillRect(0,0,canvas.width,canvas.height);
-      ctx.drawImage(img,0,0);
-      URL.revokeObjectURL(url);
-      canvas.toBlob((b)=>{
-        const a = document.createElement('a');
-        a.download = `partition_${rH}x${rW}.png`;
-        a.href = URL.createObjectURL(b);
-        a.click();
-      });
+    // Count remaining unclicked reds/whites
+    const pool = {
+      red:   unclicked.filter(el => el.classList.contains('red')),
+      white: unclicked.filter(el => el.classList.contains('white')),
     };
-    img.src = url;
-  });
 
-  // Init
-  sizeSVG(); draw();
+    // Build the target order:
+    // 1) all clicked in their current order (original colours preserved)
+    const order = [...clicked];
+
+    // 2) fill remaining slots row-by-row trying for 5 red then 5 white each row
+    const total = circles.length;
+    const remainingSlots = total - clicked.length;
+
+    for (let i = 0; i < remainingSlots; i++) {
+      const col = ( (order.length) % 10 ); // current column index 0..9
+      const targetColor = col < 5 ? 'red' : 'white';
+      // Choose from target pool if available; otherwise fallback to the other
+      let nextEl = null;
+      if (pool[targetColor].length) {
+        nextEl = pool[targetColor].shift();
+      } else {
+        const other = targetColor === 'red' ? 'white' : 'red';
+        if (pool[other].length) {
+          nextEl = pool[other].shift();
+        }
+      }
+      if (nextEl) order.push(nextEl);
+      else break; // shouldn't happen, but safety
+    }
+
+    // Re-append in new order
+    grid.innerHTML = '';
+    order.forEach(el => grid.appendChild(el));
+  }
+
 })();
 </script>
 </body>

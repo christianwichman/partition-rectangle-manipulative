@@ -3,359 +3,460 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Partition Method – Dot Field Rectangle Splitter</title>
+<title>Partition Method – Toggle Partition & Split Labels</title>
 <style>
   :root { --bg:#0b0d10; --ui:#11151a; --ink:#e8eef6; --muted:#aeb6c2; --accent:#56a0ff; --accent2:#ffa756; }
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;}
-  header{padding:16px 20px;background:var(--ui);position:sticky;top:0;z-index:2;border-bottom:1px solid #1c222a}
-  header h1{margin:0;font-size:18px;font-weight:600}
-  .wrap{display:grid;grid-template-columns:320px 1fr;gap:16px;padding:16px}
-  @media (max-width: 920px){ .wrap{grid-template-columns:1fr} }
-  .panel{background:var(--ui);border:1px solid #1c222a;border-radius:12px;padding:14px}
-  .panel h2{margin:0 0 10px 0;font-size:15px;font-weight:600;color:var(--muted)}
-  .row{display:grid;grid-template-columns:1fr 100px;gap:8px;align-items:center;margin:8px 0}
-  .row > label{font-size:13px;color:var(--ink)}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Inter,Roboto,Arial,sans-serif}
+  header{padding:14px 18px;background:var(--ui);position:sticky;top:0;z-index:2;border-bottom:1px solid #1c222a}
+  header h1{margin:0;font-size:16px;font-weight:600}
+  .wrap{display:grid;grid-template-columns:300px 1fr;gap:14px;padding:14px}
+  @media (max-width: 900px){ .wrap{grid-template-columns:1fr} }
+  .panel{background:var(--ui);border:1px solid #1c222a;border-radius:12px;padding:12px}
+  .panel h2{margin:0 0 8px 0;font-size:14px;color:var(--muted);font-weight:600}
+  .row{display:grid;grid-template-columns:1fr 130px;gap:8px;align-items:center;margin:8px 0}
+  label{font-size:13px}
   input[type="number"], select{
-    width:100%;box-sizing:border-box;background:#0f1318;color:var(--ink);
+    width:100%;background:#0f1318;color:var(--ink);
     border:1px solid #1c222a;border-radius:8px;padding:8px 10px;font-size:14px;
   }
-  input[type="range"]{width:100%}
   .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
   button{
     background:#19202a;color:var(--ink);border:1px solid #263043;border-radius:10px;
-    padding:10px 12px;font-size:14px;cursor:pointer
+    padding:9px 12px;font-size:14px;cursor:pointer
   }
   button:hover{border-color:#36507a}
   #equation{font-variant-numeric:tabular-nums;line-height:1.35;background:#0f1318;border:1px solid #1c222a;border-radius:10px;padding:10px;margin-top:8px}
-  .canvasWrap{position:relative;overflow:auto;background:#0a0d11;border:1px solid #1c222a;border-radius:12px;height:70vh;min-height:420px}
-  svg{display:block}
   .note{color:var(--muted);font-size:12px;margin-top:8px}
+  .canvasWrap{position:relative;overflow:auto;background:#0a0d11;border:1px solid #1c222a;border-radius:12px;height:72vh;min-height:420px}
+  svg{display:block}
   .legend{display:flex;gap:10px;align-items:center;font-size:12px;color:var(--muted);margin-top:6px}
   .swatch{width:14px;height:14px;border-radius:3px;display:inline-block;border:1px solid #0004}
+  .toggle{
+    display:inline-flex;align-items:center;gap:8px;background:#19202a;border:1px solid #263043;border-radius:999px;
+    padding:6px 10px;cursor:pointer;user-select:none
+  }
+  .toggle input{appearance:none;width:22px;height:22px;border-radius:999px;border:1px solid #36507a;background:#0f1318;display:inline-block;position:relative}
+  .toggle input:checked{background:#2c82ff}
+  .dimmed{opacity:0.55;pointer-events:none}
 </style>
 </head>
 <body>
-<header><h1>Partition Method – Rectangles on a Dot Field</h1></header>
+<header><h1>Partition Method – Toggle Partition & Split Labels</h1></header>
 
 <div class="wrap">
   <div class="panel">
     <h2>Controls</h2>
-    <div class="row"><label>Dots across (grid columns)</label><input id="gridCols" type="number" min="5" max="50" value="20"></div>
-    <div class="row"><label>Dots down (grid rows)</label><input id="gridRows" type="number" min="5" max="50" value="20"></div>
-
-    <hr style="border:0;border-top:1px solid #1c222a;margin:10px 0">
-
-    <div class="row"><label>Rectangle width (columns)</label><input id="rectW" type="number" min="1" value="13"></div>
-    <div class="row"><label>Rectangle height (rows)</label><input id="rectH" type="number" min="1" value="3"></div>
 
     <div class="row">
-      <label>Split direction</label>
-      <select id="splitDir">
-        <option value="vertical">Vertical (split multiplicand)</option>
-        <option value="horizontal">Horizontal (split multiplier)</option>
-      </select>
+      <label>Dots across (columns)</label><input id="gridCols" type="number" min="5" max="60" value="20">
+    </div>
+    <div class="row">
+      <label>Dots down (rows)</label><input id="gridRows" type="number" min="5" max="60" value="20">
     </div>
 
-    <div class="row"><label>Split at (units into the dimension)</label><input id="splitAt" type="number" min="0" value="12"></div>
+    <div class="row" style="grid-template-columns:1fr auto">
+      <label>Partition</label>
+      <label class="toggle">
+        <span id="partLabel">OFF</span>
+        <input id="partToggle" type="checkbox" />
+      </label>
+    </div>
+
+    <div id="splitControls">
+      <div class="row">
+        <label>Split direction</label>
+        <select id="splitDir">
+          <option value="vertical">Vertical (split columns)</option>
+          <option value="horizontal">Horizontal (split rows)</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Split at</label>
+        <input id="splitAt" type="number" min="0" value="12">
+      </div>
+    </div>
 
     <div class="btns">
-      <button id="fitSplit12">Set example 3×13 → 12 + 1</button>
+      <button id="example">Example 3×13 → 12+1</button>
       <button id="reset">Reset</button>
       <button id="export">Export PNG</button>
     </div>
 
     <div id="equation" aria-live="polite"></div>
     <div class="legend">
-      <span class="swatch" style="background:#56a0ff66"></span> Left/Top part
-      <span class="swatch" style="background:#ffa75666"></span> Right/Bottom part
-      <span class="swatch" style="background:#ffffff; border:1px solid #1c222a"></span> Dots / grid
+      <span class="swatch" style="background:#56a0ff66"></span> Part A
+      <span class="swatch" style="background:#ffa75666"></span> Part B
+      <span class="swatch" style="background:#ffffff; border:1px solid #1c222a"></span> Dots
     </div>
-    <div class="note">Tip: You can also <b>drag from one dot to another</b> on the canvas to set the rectangle quickly.</div>
+    <div class="note">
+      Tip: <b>Drag from one dot to another</b> to draw a rectangle. <b>Drag inside</b> to move it. When partition is ON, <b>drag the split line</b> to adjust it.
+    </div>
   </div>
 
   <div class="panel canvasWrap">
-    <svg id="board" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Dot field with rectangle and partition line"></svg>
+    <svg id="board" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Dot grid with draggable rectangle and optional partition"></svg>
   </div>
 </div>
 
 <script>
 (function(){
-  // --- Config ---
-  const dotSpacing = 28;  // px between dots
+  // --- Layout ---
+  const dotSpacing = 28;     // px between dots
   const dotRadius  = 2.8;
-  const pad        = 30;  // outer padding
+  const pad        = 30;     // border padding
 
-  // Elements
+  // DOM
   const svg = document.getElementById('board');
   const gridCols = document.getElementById('gridCols');
   const gridRows = document.getElementById('gridRows');
-  const rectW    = document.getElementById('rectW');
-  const rectH    = document.getElementById('rectH');
   const splitDir = document.getElementById('splitDir');
   const splitAt  = document.getElementById('splitAt');
   const equation = document.getElementById('equation');
+  const btnExample = document.getElementById('example');
   const btnReset = document.getElementById('reset');
-  const btnExport= document.getElementById('export');
-  const btnEx    = document.getElementById('fitSplit12');
+  const btnExport = document.getElementById('export');
+  const partToggle = document.getElementById('partToggle');
+  const partLabel  = document.getElementById('partLabel');
+  const splitControls = document.getElementById('splitControls');
 
   // State
   let cols = +gridCols.value;
   let rows = +gridRows.value;
-  let w    = +rectW.value;
-  let h    = +rectH.value;
-  let split = 'vertical';
-  let sAt = +splitAt.value; // position for split (columns if vertical, rows if horizontal)
-  let dragInfo = null;      // for drag-to-select rectangle
 
-  // Helpers
+  // Rectangle in grid coordinates (top-left + size in dots)
+  let rX = 1, rY = 1, rW = 13, rH = 3;
+  let partDir = 'vertical';
+  let sAt = +splitAt.value;
+  let partitionEnabled = false;
+
+  // Interactions
+  let dragMode = null; // "newRect" | "moveRect" | "moveSplit"
+  let dragData = null;
+
+  // Utils
   const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
-  const snapToGrid = (x,y)=>({
+  const snapGrid = (x,y)=>({
     c: clamp(Math.round((x - pad)/dotSpacing), 0, cols-1),
     r: clamp(Math.round((y - pad)/dotSpacing), 0, rows-1)
   });
+  const sizeSVG = ()=>{
+    const w = pad*2 + (cols-1)*dotSpacing;
+    const h = pad*2 + (rows-1)*dotSpacing;
+    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    svg.setAttribute('width', w);
+    svg.setAttribute('height', h);
+  };
 
-  function sizeSVG(){
-    const width  = pad*2 + (cols-1)*dotSpacing;
-    const height = pad*2 + (rows-1)*dotSpacing;
-    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    svg.setAttribute('width', width);
-    svg.setAttribute('height', height);
+  function insideRect(c,r){
+    return c>=rX && c<=rX+(rW-1) && r>=rY && r<=rY+(rH-1);
+  }
+
+  function nearSplit(x,y){
+    if (!partitionEnabled) return false;
+    if (partDir==='vertical'){
+      const spx = pad + (rX + sAt)*dotSpacing;
+      return Math.abs(x - spx) <= 8 && (y >= pad + (rY)*dotSpacing) && (y <= pad + (rY + (rH-1))*dotSpacing);
+    } else {
+      const spy = pad + (rY + sAt)*dotSpacing;
+      return Math.abs(y - spy) <= 8 && (x >= pad + (rX)*dotSpacing) && (x <= pad + (rX + (rW-1))*dotSpacing);
+    }
   }
 
   function draw(){
-    cols = clamp(+gridCols.value,5,50);
-    rows = clamp(+gridRows.value,5,50);
-    w    = clamp(+rectW.value,1,cols);
-    h    = clamp(+rectH.value,1,rows);
-    split = splitDir.value;
-    // split bounds: cannot exceed width/height
-    sAt = clamp(+splitAt.value, 0, (split==='vertical'? w : h));
+    cols = clamp(+gridCols.value,5,60);
+    rows = clamp(+gridRows.value,5,60);
+    partDir = splitDir.value;
+    sAt = clamp(+splitAt.value, 0, partDir==='vertical' ? rW : rH);
 
-    // Resize SVG
+    // bound rectangle within grid
+    rW = clamp(rW,1,cols); rH = clamp(rH,1,rows);
+    rX = clamp(rX,0,cols - rW); rY = clamp(rY,0,rows - rH);
+
+    // resize SVG
     sizeSVG();
 
-    // Clear
+    // clear
     while (svg.firstChild) svg.removeChild(svg.firstChild);
 
-    // Draw subtle cell background to help area perception
-    const cellGroup = document.createElementNS('http://www.w3.org/2000/svg','g');
-    cellGroup.setAttribute('opacity','0.18');
-    for(let rr=0; rr<rows-1; rr++){
-      for(let cc=0; cc<cols-1; cc++){
-        const x = pad + cc*dotSpacing;
-        const y = pad + rr*dotSpacing;
-        const rect = document.createElementNS('http://www.w3.org/2000/svg','rect');
-        rect.setAttribute('x', x);
-        rect.setAttribute('y', y);
-        rect.setAttribute('width', dotSpacing);
-        rect.setAttribute('height', dotSpacing);
-        rect.setAttribute('fill', '#ffffff');
-        rect.setAttribute('fill-opacity', ((rr< h && cc< w) ? 0.10 : 0.04));
-        cellGroup.appendChild(rect);
+    // dots
+    const dotGroup = document.createElementNS('http://www.w3.org/2000/svg','g');
+    for(let rr=0; rr<rows; rr++){
+      for(let cc=0; cc<cols; cc++){
+        const cx = pad + cc*dotSpacing;
+        const cy = pad + rr*dotSpacing;
+        const dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
+        dot.setAttribute('cx', cx); dot.setAttribute('cy', cy);
+        dot.setAttribute('r', dotRadius); dot.setAttribute('fill', '#ffffff');
+        dotGroup.appendChild(dot);
       }
     }
-    svg.appendChild(cellGroup);
+    svg.appendChild(dotGroup);
 
-    // Draw shaded partition halves inside the chosen rectangle
-    const areaGroup = document.createElementNS('http://www.w3.org/2000/svg','g');
-    if (split==='vertical'){
-      const leftW = sAt;            // first part width
-      const rightW = w - sAt;       // second part width
-      if (leftW>0){
-        const rectL = document.createElementNS('http://www.w3.org/2000/svg','rect');
-        rectL.setAttribute('x', pad);
-        rectL.setAttribute('y', pad);
-        rectL.setAttribute('width', Math.max(0,leftW-0)*dotSpacing);
-        rectL.setAttribute('height', Math.max(0,h-0)*dotSpacing);
-        rectL.setAttribute('fill', '#56a0ff');
-        rectL.setAttribute('fill-opacity','0.40');
-        areaGroup.appendChild(rectL);
+    // partition fills/line (if enabled)
+    if (partitionEnabled){
+      const area = document.createElementNS('http://www.w3.org/2000/svg','g');
+      if (partDir==='vertical'){
+        const aW = sAt, bW = rW - sAt;
+        if (aW>0){
+          const rectA = document.createElementNS('http://www.w3.org/2000/svg','rect');
+          rectA.setAttribute('x', pad + rX*dotSpacing);
+          rectA.setAttribute('y', pad + rY*dotSpacing);
+          rectA.setAttribute('width', (aW-0)*dotSpacing);
+          rectA.setAttribute('height',(rH-0)*dotSpacing);
+          rectA.setAttribute('fill','#56a0ff'); rectA.setAttribute('fill-opacity','0.40');
+          area.appendChild(rectA);
+        }
+        if (bW>0){
+          const rectB = document.createElementNS('http://www.w3.org/2000/svg','rect');
+          rectB.setAttribute('x', pad + (rX + sAt)*dotSpacing);
+          rectB.setAttribute('y', pad + rY*dotSpacing);
+          rectB.setAttribute('width', (bW-0)*dotSpacing);
+          rectB.setAttribute('height',(rH-0)*dotSpacing);
+          rectB.setAttribute('fill','#ffa756'); rectB.setAttribute('fill-opacity','0.40');
+          area.appendChild(rectB);
+        }
+        const lx = pad + (rX + sAt)*dotSpacing;
+        const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+        line.setAttribute('x1', lx); line.setAttribute('x2', lx);
+        line.setAttribute('y1', pad + rY*dotSpacing);
+        line.setAttribute('y2', pad + (rY + (rH-1))*dotSpacing);
+        line.setAttribute('stroke','#ffd7a8'); line.setAttribute('stroke-width','2.2');
+        area.appendChild(line);
+      } else {
+        const aH = sAt, bH = rH - sAt;
+        if (aH>0){
+          const rectA = document.createElementNS('http://www.w3.org/2000/svg','rect');
+          rectA.setAttribute('x', pad + rX*dotSpacing);
+          rectA.setAttribute('y', pad + rY*dotSpacing);
+          rectA.setAttribute('width', (rW-0)*dotSpacing);
+          rectA.setAttribute('height',(aH-0)*dotSpacing);
+          rectA.setAttribute('fill','#56a0ff'); rectA.setAttribute('fill-opacity','0.40');
+          area.appendChild(rectA);
+        }
+        if (bH>0){
+          const rectB = document.createElementNS('http://www.w3.org/2000/svg','rect');
+          rectB.setAttribute('x', pad + rX*dotSpacing);
+          rectB.setAttribute('y', pad + (rY + sAt)*dotSpacing);
+          rectB.setAttribute('width', (rW-0)*dotSpacing);
+          rectB.setAttribute('height',(bH-0)*dotSpacing);
+          rectB.setAttribute('fill','#ffa756'); rectB.setAttribute('fill-opacity','0.40');
+          area.appendChild(rectB);
+        }
+        const ly = pad + (rY + sAt)*dotSpacing;
+        const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+        line.setAttribute('x1', pad + rX*dotSpacing);
+        line.setAttribute('x2', pad + (rX + (rW-1))*dotSpacing);
+        line.setAttribute('y1', ly); line.setAttribute('y2', ly);
+        line.setAttribute('stroke','#ffd7a8'); line.setAttribute('stroke-width','2.2');
+        area.appendChild(line);
       }
-      if (rightW>0){
-        const rectR = document.createElementNS('http://www.w3.org/2000/svg','rect');
-        rectR.setAttribute('x', pad + sAt*dotSpacing);
-        rectR.setAttribute('y', pad);
-        rectR.setAttribute('width', Math.max(0,rightW-0)*dotSpacing);
-        rectR.setAttribute('height', Math.max(0,h-0)*dotSpacing);
-        rectR.setAttribute('fill', '#ffa756');
-        rectR.setAttribute('fill-opacity','0.40');
-        areaGroup.appendChild(rectR);
-      }
-      // partition line
-      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
-      const x = pad + sAt*dotSpacing;
-      line.setAttribute('x1', x); line.setAttribute('x2', x);
-      line.setAttribute('y1', pad); line.setAttribute('y2', pad + (h-1)*dotSpacing);
-      line.setAttribute('stroke', '#ffd7a8'); line.setAttribute('stroke-width','2');
-      areaGroup.appendChild(line);
-
-    } else {
-      const topH = sAt;
-      const botH = h - sAt;
-      if (topH>0){
-        const rectT = document.createElementNS('http://www.w3.org/2000/svg','rect');
-        rectT.setAttribute('x', pad);
-        rectT.setAttribute('y', pad);
-        rectT.setAttribute('width', Math.max(0,w-0)*dotSpacing);
-        rectT.setAttribute('height', Math.max(0,topH-0)*dotSpacing);
-        rectT.setAttribute('fill', '#56a0ff');
-        rectT.setAttribute('fill-opacity','0.40');
-        areaGroup.appendChild(rectT);
-      }
-      if (botH>0){
-        const rectB = document.createElementNS('http://www.w3.org/2000/svg','rect');
-        rectB.setAttribute('x', pad);
-        rectB.setAttribute('y', pad + sAt*dotSpacing);
-        rectB.setAttribute('width', Math.max(0,w-0)*dotSpacing);
-        rectB.setAttribute('height', Math.max(0,botH-0)*dotSpacing);
-        rectB.setAttribute('fill', '#ffa756');
-        rectB.setAttribute('fill-opacity','0.40');
-        areaGroup.appendChild(rectB);
-      }
-      // partition line
-      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
-      const y = pad + sAt*dotSpacing;
-      line.setAttribute('x1', pad); line.setAttribute('x2', pad + (w-1)*dotSpacing);
-      line.setAttribute('y1', y);   line.setAttribute('y2', y);
-      line.setAttribute('stroke', '#ffd7a8'); line.setAttribute('stroke-width','2');
-      areaGroup.appendChild(line);
+      svg.appendChild(area);
     }
-    svg.appendChild(areaGroup);
 
-    // Draw outer rectangle border (snapped to dots)
+    // rectangle border
     const border = document.createElementNS('http://www.w3.org/2000/svg','rect');
-    border.setAttribute('x', pad);
-    border.setAttribute('y', pad);
-    border.setAttribute('width', Math.max(0,(w-1))*dotSpacing);
-    border.setAttribute('height', Math.max(0,(h-1))*dotSpacing);
+    border.setAttribute('x', pad + rX*dotSpacing);
+    border.setAttribute('y', pad + rY*dotSpacing);
+    border.setAttribute('width', Math.max(0,(rW-1))*dotSpacing);
+    border.setAttribute('height',Math.max(0,(rH-1))*dotSpacing);
     border.setAttribute('fill','none');
     border.setAttribute('stroke','#56a0ff');
-    border.setAttribute('stroke-width','2.2');
+    border.setAttribute('stroke-width','2.4');
     svg.appendChild(border);
 
-    // Dots
+    // labels + equation
+    addLabels();
+    updateEquation();
+
+    // UI state
+    partLabel.textContent = partitionEnabled ? 'ON' : 'OFF';
+    splitControls.classList.toggle('dimmed', !partitionEnabled);
+    splitDir.disabled = !partitionEnabled;
+    splitAt.disabled  = !partitionEnabled;
+  }
+
+  function addLabels(){
     const g = document.createElementNS('http://www.w3.org/2000/svg','g');
-    for(let r=0;r<rows;r++){
-      for(let c=0;c<cols;c++){
-        const cx = pad + c*dotSpacing;
-        const cy = pad + r*dotSpacing;
-        const dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
-        dot.setAttribute('cx', cx);
-        dot.setAttribute('cy', cy);
-        dot.setAttribute('r', dotRadius);
-        dot.setAttribute('fill', '#ffffff');
-        g.appendChild(dot);
+    g.setAttribute('font-size','12'); g.setAttribute('fill','#e8eef6');
+
+    // total width/height labels (always)
+    const tx = pad + (rX*dotSpacing) + ((rW-1)*dotSpacing)/2;
+    const ty = pad + rY*dotSpacing - 10;
+    const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+    t.setAttribute('x', tx); t.setAttribute('y', Math.max(12,ty));
+    t.setAttribute('text-anchor','middle'); t.textContent = `${rW}`;
+    g.appendChild(t);
+
+    const lx = pad + rX*dotSpacing - 10;
+    const ly = pad + (rY*dotSpacing) + ((rH-1)*dotSpacing)/2 + 4;
+    const t2 = document.createElementNS('http://www.w3.org/2000/svg','text');
+    t2.setAttribute('x', Math.max(10,lx)); t2.setAttribute('y', ly);
+    t2.setAttribute('text-anchor','middle'); t2.textContent = `${rH}`;
+    g.appendChild(t2);
+
+    // split sub-labels when partition is enabled
+    if (partitionEnabled){
+      if (partDir==='vertical'){
+        const aW = sAt, bW = rW - sAt;
+        // left part label
+        if (aW>0){
+          const txA = pad + (rX*dotSpacing) + ((aW-1)*dotSpacing)/2;
+          const tA = document.createElementNS('http://www.w3.org/2000/svg','text');
+          tA.setAttribute('x', txA); tA.setAttribute('y', Math.max(12,ty-12));
+          tA.setAttribute('text-anchor','middle'); tA.textContent = `${aW}`;
+          g.appendChild(tA);
+        }
+        // right part label
+        if (bW>0){
+          const txB = pad + ((rX + sAt)*dotSpacing) + ((bW-1)*dotSpacing)/2;
+          const tB = document.createElementNS('http://www.w3.org/2000/svg','text');
+          tB.setAttribute('x', txB); tB.setAttribute('y', Math.max(12,ty-12));
+          tB.setAttribute('text-anchor','middle'); tB.textContent = `${bW}`;
+          g.appendChild(tB);
+        }
+      } else {
+        const aH = sAt, bH = rH - sAt;
+        // top part label
+        if (aH>0){
+          const lyA = pad + (rY*dotSpacing) + ((aH-1)*dotSpacing)/2 + 4;
+          const tA = document.createElementNS('http://www.w3.org/2000/svg','text');
+          tA.setAttribute('x', Math.max(10, lx-12)); tA.setAttribute('y', lyA);
+          tA.setAttribute('text-anchor','middle'); tA.textContent = `${aH}`;
+          g.appendChild(tA);
+        }
+        // bottom part label
+        if (bH>0){
+          const lyB = pad + ((rY + sAt)*dotSpacing) + ((bH-1)*dotSpacing)/2 + 4;
+          const tB = document.createElementNS('http://www.w3.org/2000/svg','text');
+          tB.setAttribute('x', Math.max(10, lx-12)); tB.setAttribute('y', lyB);
+          tB.setAttribute('text-anchor','middle'); tB.textContent = `${bH}`;
+          g.appendChild(tB);
+        }
       }
     }
+
     svg.appendChild(g);
+  }
 
-    // Axis labels (optional)
-    addLabelText();
-
-    // Equation readout
-    const total = w*h;
-    if (split==='vertical'){
-      const a = sAt, b = w - sAt;
-      const p1 = h*a, p2 = h*b;
+  function updateEquation(){
+    const total = rW * rH;
+    if (!partitionEnabled){
+      equation.innerHTML = `<div><b>Product:</b> ${rH} × ${rW} = <b>${total}</b></div>`;
+      return;
+    }
+    if (partDir==='vertical'){
+      const a = sAt, b = rW - sAt;
+      const p1 = rH*a, p2 = rH*b;
       equation.innerHTML =
-        `<div><b>Product:</b> ${h} × ${w} = <b>${total}</b></div>`+
-        `<div>Partition: ${h} × ${w} = (${h} × ${a}) + (${h} × ${b}) = ${p1} + ${p2} = <b>${total}</b></div>`;
+        `<div><b>Product:</b> ${rH} × ${rW} = <b>${total}</b></div>`+
+        `<div>Partition: ${rH} × ${rW} = (${rH} × ${a}) + (${rH} × ${b}) = ${p1} + ${p2} = <b>${total}</b></div>`;
     } else {
-      const a = sAt, b = h - sAt;
-      const p1 = w*a, p2 = w*b;
+      const a = sAt, b = rH - sAt;
+      const p1 = rW*a, p2 = rW*b;
       equation.innerHTML =
-        `<div><b>Product:</b> ${h} × ${w} = <b>${total}</b></div>`+
-        `<div>Partition: ${h} × ${w} = (${a} × ${w}) + (${b} × ${w}) = ${p1} + ${p2} = <b>${total}</b></div>`;
+        `<div><b>Product:</b> ${rH} × ${rW} = <b>${total}</b></div>`+
+        `<div>Partition: ${rH} × ${rW} = (${a} × ${rW}) + (${b} × ${rW}) = ${p1} + ${p2} = <b>${total}</b></div>`;
     }
   }
 
-  function addLabelText(){
-    // size markers along the top and left for the current rectangle
-    const labelGroup = document.createElementNS('http://www.w3.org/2000/svg','g');
-    labelGroup.setAttribute('font-size','12');
-    labelGroup.setAttribute('fill','#e8eef6');
-
-    // top width label
-    const tx = pad + ((w-1)*dotSpacing)/2;
-    const ty = pad - 10;
-    const t = document.createElementNS('http://www.w3.org/2000/svg','text');
-    t.setAttribute('x', tx);
-    t.setAttribute('y', Math.max(12,ty));
-    t.setAttribute('text-anchor','middle');
-    t.textContent = `${w}`;
-    labelGroup.appendChild(t);
-
-    // left height label
-    const lx = pad - 10;
-    const ly = pad + ((h-1)*dotSpacing)/2 + 4;
-    const t2 = document.createElementNS('http://www.w3.org/2000/svg','text');
-    t2.setAttribute('x', Math.max(10,lx));
-    t2.setAttribute('y', ly);
-    t2.setAttribute('text-anchor','middle');
-    t2.textContent = `${h}`;
-    labelGroup.appendChild(t2);
-
-    svg.appendChild(labelGroup);
-  }
-
-  // Drag-to-define rectangle (start and end at dots)
-  svg.addEventListener('pointerdown', (e)=>{
+  // Pointer helpers
+  function svgPointFromEvent(e){
     const pt = svg.createSVGPoint();
     pt.x = e.clientX; pt.y = e.clientY;
-    const p = pt.matrixTransform(svg.getScreenCTM().inverse());
-    const sn = snapToGrid(p.x,p.y);
-    dragInfo = { startC: sn.c, startR: sn.r };
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  }
+
+  // Interaction logic
+  svg.addEventListener('pointerdown', (e)=>{
+    const p = svgPointFromEvent(e);
+    const g = snapGrid(p.x, p.y);
+
+    // priority: split drag (when enabled), rect move, new rect
+    if (nearSplit(p.x, p.y)){
+      dragMode = 'moveSplit'; dragData = {};
+    } else if (insideRect(g.c, g.r)){
+      dragMode = 'moveRect'; dragData = { startC: g.c, startR: g.r, startX: rX, startY: rY };
+    } else {
+      dragMode = 'newRect';  dragData = { startC: g.c, startR: g.r };
+    }
+    svg.setPointerCapture(e.pointerId);
+  });
+
+  svg.addEventListener('pointermove', (e)=>{
+    if (!dragMode) return;
+    const p = svgPointFromEvent(e);
+    const g = snapGrid(p.x, p.y);
+
+    if (dragMode==='newRect'){
+      const minC = Math.min(dragData.startC, g.c);
+      const maxC = Math.max(dragData.startC, g.c);
+      const minR = Math.min(dragData.startR, g.r);
+      const maxR = Math.max(dragData.startR, g.r);
+      rX = clamp(minC,0,cols-1);
+      rY = clamp(minR,0,rows-1);
+      rW = clamp((maxC - minC) + 1, 1, cols - rX);
+      rH = clamp((maxR - minR) + 1, 1, rows - rY);
+      sAt = clamp(sAt, 0, partDir==='vertical'? rW : rH);
+      splitAt.value = sAt; draw();
+    }
+    else if (dragMode==='moveRect'){
+      const dC = g.c - dragData.startC;
+      const dR = g.r - dragData.startR;
+      rX = clamp(dragData.startX + dC, 0, cols - rW);
+      rY = clamp(dragData.startY + dR, 0, rows - rH);
+      draw();
+    }
+    else if (dragMode==='moveSplit' && partitionEnabled){
+      if (partDir==='vertical'){
+        const relC = clamp(g.c - rX, 0, rW);
+        sAt = relC; splitAt.value = sAt;
+      } else {
+        const relR = clamp(g.r - rY, 0, rH);
+        sAt = relR; splitAt.value = sAt;
+      }
+      draw();
+    }
   });
 
   window.addEventListener('pointerup', (e)=>{
-    if(!dragInfo) return;
-    const pt = svg.createSVGPoint();
-    pt.x = e.clientX; pt.y = e.clientY;
-    const p = pt.matrixTransform(svg.getScreenCTM().inverse());
-    const sn = snapToGrid(p.x,p.y);
-    const minC = Math.min(dragInfo.startC, sn.c);
-    const maxC = Math.max(dragInfo.startC, sn.c);
-    const minR = Math.min(dragInfo.startR, sn.r);
-    const maxR = Math.max(dragInfo.startR, sn.r);
+    dragMode = null; dragData = null;
+    if (e.pointerId) try{ svg.releasePointerCapture(e.pointerId); }catch{}
+  });
 
-    // width/height are counts of dots along each dimension
-    const newW = (maxC - minC) + 1;
-    const newH = (maxR - minR) + 1;
-
-    rectW.value = clamp(newW,1,cols);
-    rectH.value = clamp(newH,1,rows);
-
-    // keep split within bounds
-    splitAt.value = clamp(+splitAt.value, 0, (splitDir.value==='vertical'? +rectW.value : +rectH.value));
-    dragInfo = null;
+  // Inputs
+  [gridCols, gridRows].forEach(el=> el.addEventListener('input', draw));
+  splitDir.addEventListener('input', ()=>{ sAt = clamp(sAt, 0, splitDir.value==='vertical'? rW : rH); splitAt.value = sAt; draw(); });
+  splitAt.addEventListener('input', ()=>{ sAt = +splitAt.value; draw(); });
+  partToggle.addEventListener('input', ()=>{
+    partitionEnabled = partToggle.checked;
     draw();
   });
 
-  // Inputs handlers
-  [gridCols,gridRows,rectW,rectH,splitDir,splitAt].forEach(el=> el.addEventListener('input', draw));
+  // Buttons
+  btnExample.addEventListener('click', ()=>{
+    rW = 13; rH = 3; rX = 2; rY = 2;
+    partDir = 'vertical'; splitDir.value = 'vertical';
+    sAt = 12; splitAt.value = 12;
+    partitionEnabled = true; partToggle.checked = true;
+    draw();
+  });
 
   btnReset.addEventListener('click', ()=>{
     gridCols.value = 20; gridRows.value = 20;
-    rectW.value = 13; rectH.value = 3;
-    splitDir.value = 'vertical';
-    splitAt.value = 12;
-    draw();
-  });
-
-  btnEx.addEventListener('click', ()=>{
-    rectH.value = 3; rectW.value = 13;
-    splitDir.value = 'vertical';
-    splitAt.value = 12; // 12 + 1
+    rW = 13; rH = 3; rX = 1; rY = 1;
+    partDir = 'vertical'; splitDir.value = 'vertical';
+    sAt = 12; splitAt.value = 12;
+    partitionEnabled = false; partToggle.checked = false;
     draw();
   });
 
   btnExport.addEventListener('click', ()=>{
-    // Render SVG to canvas and save
     const serializer = new XMLSerializer();
     const src = serializer.serializeToString(svg);
     const img = new Image();
-    const svgBlob = new Blob([src], {type:'image/svg+xml;charset=utf-8'});
-    const url = URL.createObjectURL(svgBlob);
+    const blob = new Blob([src], {type:'image/svg+xml;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
     img.onload = function(){
       const canvas = document.createElement('canvas');
       canvas.width = svg.viewBox.baseVal.width;
@@ -364,18 +465,18 @@
       ctx.fillStyle = '#0a0d11'; ctx.fillRect(0,0,canvas.width,canvas.height);
       ctx.drawImage(img,0,0);
       URL.revokeObjectURL(url);
-      canvas.toBlob((blob)=>{
-        const dl = document.createElement('a');
-        dl.download = `partition_${rectH.value}x${rectW.value}.png`;
-        dl.href = URL.createObjectURL(blob);
-        dl.click();
+      canvas.toBlob((b)=>{
+        const a = document.createElement('a');
+        a.download = `partition_${rH}x${rW}.png`;
+        a.href = URL.createObjectURL(b);
+        a.click();
       });
     };
     img.src = url;
   });
 
   // Initial draw
-  draw();
+  sizeSVG(); draw();
 })();
 </script>
 </body>

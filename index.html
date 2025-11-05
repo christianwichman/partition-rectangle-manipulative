@@ -3,18 +3,18 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Partition Method – Toggle Partition & Split Labels</title>
+<title>Partition Method – Perfect Alignment + Draw Partition</title>
 <style>
   :root { --bg:#0b0d10; --ui:#11151a; --ink:#e8eef6; --muted:#aeb6c2; --accent:#56a0ff; --accent2:#ffa756; }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Inter,Roboto,Arial,sans-serif}
   header{padding:14px 18px;background:var(--ui);position:sticky;top:0;z-index:2;border-bottom:1px solid #1c222a}
   header h1{margin:0;font-size:16px;font-weight:600}
-  .wrap{display:grid;grid-template-columns:300px 1fr;gap:14px;padding:14px}
+  .wrap{display:grid;grid-template-columns:320px 1fr;gap:14px;padding:14px}
   @media (max-width: 900px){ .wrap{grid-template-columns:1fr} }
   .panel{background:var(--ui);border:1px solid #1c222a;border-radius:12px;padding:12px}
   .panel h2{margin:0 0 8px 0;font-size:14px;color:var(--muted);font-weight:600}
-  .row{display:grid;grid-template-columns:1fr 130px;gap:8px;align-items:center;margin:8px 0}
+  .row{display:grid;grid-template-columns:1fr 150px;gap:8px;align-items:center;margin:8px 0}
   label{font-size:13px}
   input[type="number"], select{
     width:100%;background:#0f1318;color:var(--ink);
@@ -39,10 +39,12 @@
   .toggle input{appearance:none;width:22px;height:22px;border-radius:999px;border:1px solid #36507a;background:#0f1318;display:inline-block;position:relative}
   .toggle input:checked{background:#2c82ff}
   .dimmed{opacity:0.55;pointer-events:none}
+  .hint{font-size:12px;color:#aeb6c2;margin-top:4px}
+  .mode-pill{font-size:12px;padding:2px 8px;border:1px solid #36507a;border-radius:999px;background:#0f1318;color:#e8eef6}
 </style>
 </head>
 <body>
-<header><h1>Partition Method – Toggle Partition & Split Labels</h1></header>
+<header><h1>Partition Method – Perfect Alignment + Draw Partition</h1></header>
 
 <div class="wrap">
   <div class="panel">
@@ -75,12 +77,17 @@
         <label>Split at</label>
         <input id="splitAt" type="number" min="0" value="12">
       </div>
+      <div class="btns" id="drawPartRow">
+        <button id="drawPartitionBtn">Draw partition</button>
+        <span class="hint">Then drag from one dot to another inside the rectangle.</span>
+      </div>
     </div>
 
     <div class="btns">
       <button id="example">Example 3×13 → 12+1</button>
       <button id="reset">Reset</button>
       <button id="export">Export PNG</button>
+      <span id="modeBadge" class="mode-pill" style="display:none">Mode: Draw partition</span>
     </div>
 
     <div id="equation" aria-live="polite"></div>
@@ -90,7 +97,9 @@
       <span class="swatch" style="background:#ffffff; border:1px solid #1c222a"></span> Dots
     </div>
     <div class="note">
-      Tip: <b>Drag from one dot to another</b> to draw a rectangle. <b>Drag inside</b> to move it. When partition is ON, <b>drag the split line</b> to adjust it.
+      • Drag from one dot to another to draw the rectangle.  
+      • When partition is ON, drag the line to adjust, or click <b>Draw partition</b> and drag between dots inside the rectangle.  
+      • Labels split automatically (e.g., “13 = 12 + 1” along the split side).
     </div>
   </div>
 
@@ -101,10 +110,10 @@
 
 <script>
 (function(){
-  // --- Layout ---
-  const dotSpacing = 28;     // px between dots
-  const dotRadius  = 2.8;
-  const pad        = 30;     // border padding
+  // ===== Grid geometry (cell-based so fills and borders align) =====
+  const S = 28;            // spacing between adjacent columns/rows
+  const R = 2.8;           // dot radius
+  const PAD = 30;          // canvas padding
 
   // DOM
   const svg = document.getElementById('board');
@@ -119,153 +128,174 @@
   const partToggle = document.getElementById('partToggle');
   const partLabel  = document.getElementById('partLabel');
   const splitControls = document.getElementById('splitControls');
+  const btnDrawPartition = document.getElementById('drawPartitionBtn');
+  const modeBadge = document.getElementById('modeBadge');
 
   // State
   let cols = +gridCols.value;
   let rows = +gridRows.value;
 
-  // Rectangle in grid coordinates (top-left + size in dots)
+  // Rectangle (top-left cell index) + size in CELLS (so area = rW*rH, labels match, fills align)
   let rX = 1, rY = 1, rW = 13, rH = 3;
-  let partDir = 'vertical';
-  let sAt = +splitAt.value;
+
+  // Partition
   let partitionEnabled = false;
+  let partDir = 'vertical';  // vertical = split columns, horizontal = split rows
+  let sAt = +splitAt.value;  // split offset (0..rW or 0..rH)
 
-  // Interactions
-  let dragMode = null; // "newRect" | "moveRect" | "moveSplit"
+  // Interaction modes
+  // - newRect: drag between dots to define rectangle
+  // - moveRect: drag inside rect to move
+  // - moveSplit: drag existing split line
+  // - drawSplit: drag between dots INSIDE the rect to define a new split
+  let dragMode = null;
   let dragData = null;
+  let drawSplitArmed = false;
 
-  // Utils
+  // Utilities
   const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
-  const snapGrid = (x,y)=>({
-    c: clamp(Math.round((x - pad)/dotSpacing), 0, cols-1),
-    r: clamp(Math.round((y - pad)/dotSpacing), 0, rows-1)
-  });
   const sizeSVG = ()=>{
-    const w = pad*2 + (cols-1)*dotSpacing;
-    const h = pad*2 + (rows-1)*dotSpacing;
+    // dots are placed at cell centers; there are 'cols' cells, so centers are at PAD + (c+0.5)*S
+    const w = PAD*2 + cols*S;
+    const h = PAD*2 + rows*S;
     svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
     svg.setAttribute('width', w);
     svg.setAttribute('height', h);
   };
 
-  function insideRect(c,r){
-    return c>=rX && c<=rX+(rW-1) && r>=rY && r<=rY+(rH-1);
+  // Convert pixel → cell center index (integer 0..cols-1)
+  function snapToCell(x,y){
+    const c = clamp(Math.round((x - PAD - 0.5*S)/S), 0, cols-1);
+    const r = clamp(Math.round((y - PAD - 0.5*S)/S), 0, rows-1);
+    return {c,r};
+  }
+  // cell center → pixel
+  const cx = c => PAD + (c + 0.5) * S;
+  const cy = r => PAD + (r + 0.5) * S;
+
+  // Rect helpers
+  const cellRectX = () => PAD + rX * S;
+  const cellRectY = () => PAD + rY * S;
+  const cellRectW = () => rW * S;
+  const cellRectH = () => rH * S;
+
+  function insideRectCell(c,r){
+    return c>=rX && c<rX+rW && r>=rY && r<rY+rH;
   }
 
-  function nearSplit(x,y){
+  function nearSplit(px,py){
     if (!partitionEnabled) return false;
     if (partDir==='vertical'){
-      const spx = pad + (rX + sAt)*dotSpacing;
-      return Math.abs(x - spx) <= 8 && (y >= pad + (rY)*dotSpacing) && (y <= pad + (rY + (rH-1))*dotSpacing);
+      const x = cellRectX() + sAt * S;
+      return Math.abs(px - x) <= 8 && py >= cellRectY() && py <= cellRectY() + cellRectH();
     } else {
-      const spy = pad + (rY + sAt)*dotSpacing;
-      return Math.abs(y - spy) <= 8 && (x >= pad + (rX)*dotSpacing) && (x <= pad + (rX + (rW-1))*dotSpacing);
+      const y = cellRectY() + sAt * S;
+      return Math.abs(py - y) <= 8 && px >= cellRectX() && px <= cellRectX() + cellRectW();
     }
   }
 
+  // ===== Draw =====
   function draw(){
     cols = clamp(+gridCols.value,5,60);
     rows = clamp(+gridRows.value,5,60);
     partDir = splitDir.value;
+
+    // Keep split within current size
     sAt = clamp(+splitAt.value, 0, partDir==='vertical' ? rW : rH);
 
-    // bound rectangle within grid
+    // Keep rectangle inside grid
     rW = clamp(rW,1,cols); rH = clamp(rH,1,rows);
     rX = clamp(rX,0,cols - rW); rY = clamp(rY,0,rows - rH);
 
-    // resize SVG
     sizeSVG();
 
-    // clear
     while (svg.firstChild) svg.removeChild(svg.firstChild);
 
-    // dots
-    const dotGroup = document.createElementNS('http://www.w3.org/2000/svg','g');
+    // Dots at cell centers (so fills/border align with a cell-based rectangle)
+    const gDots = document.createElementNS('http://www.w3.org/2000/svg','g');
     for(let rr=0; rr<rows; rr++){
       for(let cc=0; cc<cols; cc++){
-        const cx = pad + cc*dotSpacing;
-        const cy = pad + rr*dotSpacing;
         const dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
-        dot.setAttribute('cx', cx); dot.setAttribute('cy', cy);
-        dot.setAttribute('r', dotRadius); dot.setAttribute('fill', '#ffffff');
-        dotGroup.appendChild(dot);
+        dot.setAttribute('cx', cx(cc));
+        dot.setAttribute('cy', cy(rr));
+        dot.setAttribute('r', R);
+        dot.setAttribute('fill', '#ffffff');
+        gDots.appendChild(dot);
       }
     }
-    svg.appendChild(dotGroup);
+    svg.appendChild(gDots);
 
-    // partition fills/line (if enabled)
+    // Partition fills + line (if enabled)
     if (partitionEnabled){
-      const area = document.createElementNS('http://www.w3.org/2000/svg','g');
+      const gArea = document.createElementNS('http://www.w3.org/2000/svg','g');
       if (partDir==='vertical'){
         const aW = sAt, bW = rW - sAt;
         if (aW>0){
-          const rectA = document.createElementNS('http://www.w3.org/2000/svg','rect');
-          rectA.setAttribute('x', pad + rX*dotSpacing);
-          rectA.setAttribute('y', pad + rY*dotSpacing);
-          rectA.setAttribute('width', (aW-0)*dotSpacing);
-          rectA.setAttribute('height',(rH-0)*dotSpacing);
-          rectA.setAttribute('fill','#56a0ff'); rectA.setAttribute('fill-opacity','0.40');
-          area.appendChild(rectA);
+          const ra = document.createElementNS('http://www.w3.org/2000/svg','rect');
+          ra.setAttribute('x', cellRectX());
+          ra.setAttribute('y', cellRectY());
+          ra.setAttribute('width', aW*S);
+          ra.setAttribute('height', rH*S);
+          ra.setAttribute('fill','#56a0ff'); ra.setAttribute('fill-opacity','0.40');
+          gArea.appendChild(ra);
         }
         if (bW>0){
-          const rectB = document.createElementNS('http://www.w3.org/2000/svg','rect');
-          rectB.setAttribute('x', pad + (rX + sAt)*dotSpacing);
-          rectB.setAttribute('y', pad + rY*dotSpacing);
-          rectB.setAttribute('width', (bW-0)*dotSpacing);
-          rectB.setAttribute('height',(rH-0)*dotSpacing);
-          rectB.setAttribute('fill','#ffa756'); rectB.setAttribute('fill-opacity','0.40');
-          area.appendChild(rectB);
+          const rb = document.createElementNS('http://www.w3.org/2000/svg','rect');
+          rb.setAttribute('x', cellRectX() + aW*S);
+          rb.setAttribute('y', cellRectY());
+          rb.setAttribute('width', bW*S);
+          rb.setAttribute('height', rH*S);
+          rb.setAttribute('fill','#ffa756'); rb.setAttribute('fill-opacity','0.40');
+          gArea.appendChild(rb);
         }
-        const lx = pad + (rX + sAt)*dotSpacing;
+        const lx = cellRectX() + sAt*S;
         const line = document.createElementNS('http://www.w3.org/2000/svg','line');
         line.setAttribute('x1', lx); line.setAttribute('x2', lx);
-        line.setAttribute('y1', pad + rY*dotSpacing);
-        line.setAttribute('y2', pad + (rY + (rH-1))*dotSpacing);
+        line.setAttribute('y1', cellRectY()); line.setAttribute('y2', cellRectY() + rH*S);
         line.setAttribute('stroke','#ffd7a8'); line.setAttribute('stroke-width','2.2');
-        area.appendChild(line);
+        gArea.appendChild(line);
       } else {
         const aH = sAt, bH = rH - sAt;
         if (aH>0){
-          const rectA = document.createElementNS('http://www.w3.org/2000/svg','rect');
-          rectA.setAttribute('x', pad + rX*dotSpacing);
-          rectA.setAttribute('y', pad + rY*dotSpacing);
-          rectA.setAttribute('width', (rW-0)*dotSpacing);
-          rectA.setAttribute('height',(aH-0)*dotSpacing);
-          rectA.setAttribute('fill','#56a0ff'); rectA.setAttribute('fill-opacity','0.40');
-          area.appendChild(rectA);
+          const ra = document.createElementNS('http://www.w3.org/2000/svg','rect');
+          ra.setAttribute('x', cellRectX());
+          ra.setAttribute('y', cellRectY());
+          ra.setAttribute('width', rW*S);
+          ra.setAttribute('height', aH*S);
+          ra.setAttribute('fill','#56a0ff'); ra.setAttribute('fill-opacity','0.40');
+          gArea.appendChild(ra);
         }
         if (bH>0){
-          const rectB = document.createElementNS('http://www.w3.org/2000/svg','rect');
-          rectB.setAttribute('x', pad + rX*dotSpacing);
-          rectB.setAttribute('y', pad + (rY + sAt)*dotSpacing);
-          rectB.setAttribute('width', (rW-0)*dotSpacing);
-          rectB.setAttribute('height',(bH-0)*dotSpacing);
-          rectB.setAttribute('fill','#ffa756'); rectB.setAttribute('fill-opacity','0.40');
-          area.appendChild(rectB);
+          const rb = document.createElementNS('http://www.w3.org/2000/svg','rect');
+          rb.setAttribute('x', cellRectX());
+          rb.setAttribute('y', cellRectY() + aH*S);
+          rb.setAttribute('width', rW*S);
+          rb.setAttribute('height', bH*S);
+          rb.setAttribute('fill','#ffa756'); rb.setAttribute('fill-opacity','0.40');
+          gArea.appendChild(rb);
         }
-        const ly = pad + (rY + sAt)*dotSpacing;
+        const ly = cellRectY() + sAt*S;
         const line = document.createElementNS('http://www.w3.org/2000/svg','line');
-        line.setAttribute('x1', pad + rX*dotSpacing);
-        line.setAttribute('x2', pad + (rX + (rW-1))*dotSpacing);
+        line.setAttribute('x1', cellRectX()); line.setAttribute('x2', cellRectX() + rW*S);
         line.setAttribute('y1', ly); line.setAttribute('y2', ly);
         line.setAttribute('stroke','#ffd7a8'); line.setAttribute('stroke-width','2.2');
-        area.appendChild(line);
+        gArea.appendChild(line);
       }
-      svg.appendChild(area);
+      svg.appendChild(gArea);
     }
 
-    // rectangle border
+    // Rectangle border (aligned with cell edges)
     const border = document.createElementNS('http://www.w3.org/2000/svg','rect');
-    border.setAttribute('x', pad + rX*dotSpacing);
-    border.setAttribute('y', pad + rY*dotSpacing);
-    border.setAttribute('width', Math.max(0,(rW-1))*dotSpacing);
-    border.setAttribute('height',Math.max(0,(rH-1))*dotSpacing);
+    border.setAttribute('x', cellRectX());
+    border.setAttribute('y', cellRectY());
+    border.setAttribute('width', cellRectW());
+    border.setAttribute('height', cellRectH());
     border.setAttribute('fill','none');
     border.setAttribute('stroke','#56a0ff');
     border.setAttribute('stroke-width','2.4');
     svg.appendChild(border);
 
-    // labels + equation
+    // Labels
     addLabels();
     updateEquation();
 
@@ -274,68 +304,64 @@
     splitControls.classList.toggle('dimmed', !partitionEnabled);
     splitDir.disabled = !partitionEnabled;
     splitAt.disabled  = !partitionEnabled;
+    modeBadge.style.display = drawSplitArmed ? 'inline-block' : 'none';
   }
 
   function addLabels(){
     const g = document.createElementNS('http://www.w3.org/2000/svg','g');
     g.setAttribute('font-size','12'); g.setAttribute('fill','#e8eef6');
 
-    // total width/height labels (always)
-    const tx = pad + (rX*dotSpacing) + ((rW-1)*dotSpacing)/2;
-    const ty = pad + rY*dotSpacing - 10;
-    const t = document.createElementNS('http://www.w3.org/2000/svg','text');
-    t.setAttribute('x', tx); t.setAttribute('y', Math.max(12,ty));
-    t.setAttribute('text-anchor','middle'); t.textContent = `${rW}`;
-    g.appendChild(t);
+    // Total width (top) and height (left)
+    const tTopX = cellRectX() + (rW*S)/2;
+    const tTopY = cellRectY() - 10;
+    const tTop = document.createElementNS('http://www.w3.org/2000/svg','text');
+    tTop.setAttribute('x', tTopX); tTop.setAttribute('y', Math.max(12,tTopY));
+    tTop.setAttribute('text-anchor','middle'); tTop.textContent = `${rW}`;
+    g.appendChild(tTop);
 
-    const lx = pad + rX*dotSpacing - 10;
-    const ly = pad + (rY*dotSpacing) + ((rH-1)*dotSpacing)/2 + 4;
-    const t2 = document.createElementNS('http://www.w3.org/2000/svg','text');
-    t2.setAttribute('x', Math.max(10,lx)); t2.setAttribute('y', ly);
-    t2.setAttribute('text-anchor','middle'); t2.textContent = `${rH}`;
-    g.appendChild(t2);
+    const tLeftX = cellRectX() - 10;
+    const tLeftY = cellRectY() + (rH*S)/2 + 4;
+    const tLeft = document.createElementNS('http://www.w3.org/2000/svg','text');
+    tLeft.setAttribute('x', Math.max(10,tLeftX)); tLeft.setAttribute('y', tLeftY);
+    tLeft.setAttribute('text-anchor','middle'); tLeft.textContent = `${rH}`;
+    g.appendChild(tLeft);
 
-    // split sub-labels when partition is enabled
+    // Sub labels when partition is enabled
     if (partitionEnabled){
       if (partDir==='vertical'){
         const aW = sAt, bW = rW - sAt;
-        // left part label
         if (aW>0){
-          const txA = pad + (rX*dotSpacing) + ((aW-1)*dotSpacing)/2;
+          const txA = cellRectX() + (aW*S)/2;
           const tA = document.createElementNS('http://www.w3.org/2000/svg','text');
-          tA.setAttribute('x', txA); tA.setAttribute('y', Math.max(12,ty-12));
+          tA.setAttribute('x', txA); tA.setAttribute('y', Math.max(12,tTopY-12));
           tA.setAttribute('text-anchor','middle'); tA.textContent = `${aW}`;
           g.appendChild(tA);
         }
-        // right part label
         if (bW>0){
-          const txB = pad + ((rX + sAt)*dotSpacing) + ((bW-1)*dotSpacing)/2;
+          const txB = cellRectX() + aW*S + (bW*S)/2;
           const tB = document.createElementNS('http://www.w3.org/2000/svg','text');
-          tB.setAttribute('x', txB); tB.setAttribute('y', Math.max(12,ty-12));
+          tB.setAttribute('x', txB); tB.setAttribute('y', Math.max(12,tTopY-12));
           tB.setAttribute('text-anchor','middle'); tB.textContent = `${bW}`;
           g.appendChild(tB);
         }
       } else {
         const aH = sAt, bH = rH - sAt;
-        // top part label
         if (aH>0){
-          const lyA = pad + (rY*dotSpacing) + ((aH-1)*dotSpacing)/2 + 4;
+          const lyA = cellRectY() + (aH*S)/2 + 4;
           const tA = document.createElementNS('http://www.w3.org/2000/svg','text');
-          tA.setAttribute('x', Math.max(10, lx-12)); tA.setAttribute('y', lyA);
+          tA.setAttribute('x', Math.max(10, cellRectX()-12)); tA.setAttribute('y', lyA);
           tA.setAttribute('text-anchor','middle'); tA.textContent = `${aH}`;
           g.appendChild(tA);
         }
-        // bottom part label
         if (bH>0){
-          const lyB = pad + ((rY + sAt)*dotSpacing) + ((bH-1)*dotSpacing)/2 + 4;
+          const lyB = cellRectY() + aH*S + (bH*S)/2 + 4;
           const tB = document.createElementNS('http://www.w3.org/2000/svg','text');
-          tB.setAttribute('x', Math.max(10, lx-12)); tB.setAttribute('y', lyB);
+          tB.setAttribute('x', Math.max(10, cellRectX()-12)); tB.setAttribute('y', lyB);
           tB.setAttribute('text-anchor','middle'); tB.textContent = `${bH}`;
           g.appendChild(tB);
         }
       }
     }
-
     svg.appendChild(g);
   }
 
@@ -360,25 +386,26 @@
     }
   }
 
-  // Pointer helpers
+  // ===== Pointer helpers =====
   function svgPointFromEvent(e){
     const pt = svg.createSVGPoint();
     pt.x = e.clientX; pt.y = e.clientY;
     return pt.matrixTransform(svg.getScreenCTM().inverse());
   }
 
-  // Interaction logic
+  // ===== Interaction logic =====
   svg.addEventListener('pointerdown', (e)=>{
     const p = svgPointFromEvent(e);
-    const g = snapGrid(p.x, p.y);
+    const g = snapToCell(p.x, p.y);
 
-    // priority: split drag (when enabled), rect move, new rect
-    if (nearSplit(p.x, p.y)){
+    if (partitionEnabled && nearSplit(p.x, p.y)){
       dragMode = 'moveSplit'; dragData = {};
-    } else if (insideRect(g.c, g.r)){
+    } else if (partitionEnabled && drawSplitArmed && insideRectCell(g.c, g.r)){
+      dragMode = 'drawSplit'; dragData = { startC: g.c, startR: g.r };
+    } else if (insideRectCell(g.c, g.r)){
       dragMode = 'moveRect'; dragData = { startC: g.c, startR: g.r, startX: rX, startY: rY };
     } else {
-      dragMode = 'newRect';  dragData = { startC: g.c, startR: g.r };
+      dragMode = 'newRect'; dragData = { startC: g.c, startR: g.r };
     }
     svg.setPointerCapture(e.pointerId);
   });
@@ -386,7 +413,7 @@
   svg.addEventListener('pointermove', (e)=>{
     if (!dragMode) return;
     const p = svgPointFromEvent(e);
-    const g = snapGrid(p.x, p.y);
+    const g = snapToCell(p.x, p.y);
 
     if (dragMode==='newRect'){
       const minC = Math.min(dragData.startC, g.c);
@@ -417,10 +444,34 @@
       }
       draw();
     }
+    else if (dragMode==='drawSplit' && partitionEnabled){
+      // Infer direction from drag dominance; snap to inside of rectangle
+      const dC = g.c - dragData.startC;
+      const dR = g.r - dragData.startR;
+      const absC = Math.abs(dC), absR = Math.abs(dR);
+
+      if (absC >= absR){
+        // Mostly horizontal → vertical split
+        partDir = 'vertical'; splitDir.value = 'vertical';
+        // Split position relative to left edge
+        const endC = clamp(g.c, rX, rX + rW - 1);
+        sAt = clamp(endC - rX + 0, 0, rW); // +0 keeps integer
+        splitAt.value = sAt;
+      } else {
+        // Mostly vertical → horizontal split
+        partDir = 'horizontal'; splitDir.value = 'horizontal';
+        const endR = clamp(g.r, rY, rY + rH - 1);
+        sAt = clamp(endR - rY + 0, 0, rH);
+        splitAt.value = sAt;
+      }
+      draw();
+    }
   });
 
   window.addEventListener('pointerup', (e)=>{
     dragMode = null; dragData = null;
+    drawSplitArmed = false; // exit draw mode after one split draw
+    modeBadge.style.display = 'none';
     if (e.pointerId) try{ svg.releasePointerCapture(e.pointerId); }catch{}
   });
 
@@ -436,18 +487,18 @@
   // Buttons
   btnExample.addEventListener('click', ()=>{
     rW = 13; rH = 3; rX = 2; rY = 2;
+    partitionEnabled = true; partToggle.checked = true;
     partDir = 'vertical'; splitDir.value = 'vertical';
     sAt = 12; splitAt.value = 12;
-    partitionEnabled = true; partToggle.checked = true;
     draw();
   });
 
   btnReset.addEventListener('click', ()=>{
     gridCols.value = 20; gridRows.value = 20;
     rW = 13; rH = 3; rX = 1; rY = 1;
+    partitionEnabled = false; partToggle.checked = false;
     partDir = 'vertical'; splitDir.value = 'vertical';
     sAt = 12; splitAt.value = 12;
-    partitionEnabled = false; partToggle.checked = false;
     draw();
   });
 
@@ -473,6 +524,16 @@
       });
     };
     img.src = url;
+  });
+
+  // Draw partition mode
+  btnDrawPartition.addEventListener('click', ()=>{
+    if (!partitionEnabled){
+      partitionEnabled = true; partToggle.checked = true;
+    }
+    drawSplitArmed = true;
+    modeBadge.style.display = 'inline-block';
+    draw();
   });
 
   // Initial draw

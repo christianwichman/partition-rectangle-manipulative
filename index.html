@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Rectangle Partitions — Click-to-Use</title>
+  <title>Rectangle Partitions — Click + Drag</title>
   <style>
     :root{
       --bg:#0b0b0b; --fg:#f5f5f5; --muted:#bdbdbd; --surface:#161616; --card:#1e1e1e; --accent:#3a86ff;
@@ -24,10 +24,11 @@
     .chips{display:flex; gap:10px; margin-top:8px; color:var(--muted); flex-wrap:wrap}
     .chip{background:var(--surface); border:1px solid #2a2a2a; border-radius:999px; padding:6px 10px}
     .note{color:var(--muted); font-size:13px}
+    .equation{margin-top:8px; font-size:16px}
   </style>
 </head>
 <body>
-  <h1>Rectangle Partitions — Click-to-Use</h1>
+  <h1>Rectangle Partitions — Click + Drag</h1>
 
   <div class="row">
     <div class="card">
@@ -43,21 +44,24 @@
         <label><input id="toggleDots" type="checkbox" checked> Show Dots</label>
         <button id="toggleAreas" class="btn">Show/Hide Areas</button>
         <button id="resetPartitions" class="btn">Clear Partitions</button>
+        <button id="clearHighlights" class="btn">Clear Highlights</button>
       </div>
 
       <label>Write expression for the rectangle:
         <input id="exprLabel" type="text" value="6 × 4" aria-label="Expression label">
       </label>
       <p class="note" style="margin-top:6px">
-        Click <b>Draw Partition</b>, then click once inside the field to place a vertical or horizontal cut at the nearest grid line.
-        The button must be pressed again for each new partition.
+        Press <b>Draw Partition</b> then click once to place a cut at the nearest grid line (one cut per press).
+        Or press <b>Drag Rectangle</b> and click–drag to highlight a sub-rectangle.
       </p>
+      <div id="equation" class="equation"></div>
     </div>
 
     <div class="card canvas-card">
       <canvas id="field" width="1000" height="520" aria-label="Partition field"></canvas>
       <div class="floating">
         <button id="drawPartition" class="btn" title="Arm a single cut">Draw Partition</button>
+        <button id="dragRect" class="btn" title="Draw a highlighted rectangle">Drag Rectangle</button>
         <button id="showProduct" class="btn" title="Toggle overall product">Show W×H</button>
       </div>
       <div id="axis" class="chips" aria-live="polite"></div>
@@ -69,12 +73,18 @@
     const ctx = field.getContext('2d');
     let W=6, H=4;
     let showDots = true, lightTheme = false;
-    let drawArmed = false; // click-to-use (one cut per press)
+    let clickCutArmed = false;        // click-to-use partition
     let showAreas = false, showProductOnly = false;
 
+    // Drag-to-rectangle state
+    let dragMode = false, dragging = false, dragStart = null;
+    const highlights = []; // {r0,r1,c0,c1} cell bounds
+
+    // Partition state
     const vCuts = new Set(); // 1..W-1
     const hCuts = new Set(); // 1..H-1
 
+    // --------- Helpers ---------
     function parseExpr(t){
       const m = t.toLowerCase().replace(/×/g,'x').match(/(\d+)\s*[x*]\s*(\d+)/);
       return m ? {w:Math.max(1,parseInt(m[1],10)), h:Math.max(1,parseInt(m[2],10))} : null;
@@ -83,6 +93,8 @@
       const pad=28, width=field.width-pad*2, height=field.height-pad*2;
       return {pad,width,height,cw:width/W,ch:height/H};
     }
+
+    // --------- Drawing ---------
     function draw(){
       ctx.clearRect(0,0,field.width,field.height);
       ctx.fillStyle = lightTheme ? '#ffffff' : '#0f0f10';
@@ -95,17 +107,20 @@
       ctx.lineWidth = 2;
       ctx.strokeRect(pad,pad,width,height);
 
-      // dots
+      // classic dot grid at cell centers
       if(showDots){
         ctx.fillStyle = lightTheme ? '#101010' : '#f0f0f0';
-        for(let r=0;r<=H;r++){
-          for(let c=0;c<=W;c++){
-            ctx.beginPath(); ctx.arc(pad+c*cw, pad+r*ch, 2, 0, Math.PI*2); ctx.fill();
+        const r = 3.5;
+        for(let rr=0; rr<H; rr++){
+          for(let cc=0; cc<W; cc++){
+            ctx.beginPath(); ctx.arc(pad+(cc+0.5)*cw, pad+(rr+0.5)*ch, r, 0, Math.PI*2); ctx.fill();
           }
         }
       }
-      // grid
-      ctx.strokeStyle = lightTheme ? '#d8d8d8' : '#262626'; ctx.lineWidth = 1;
+
+      // faint gridlines
+      ctx.strokeStyle = lightTheme ? '#e6e6e6' : '#262626';
+      ctx.lineWidth = 1;
       for(let r=1;r<H;r++){ const y=pad+r*ch; ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(pad+width,y); ctx.stroke(); }
       for(let c=1;c<W;c++){ const x=pad+c*cw; ctx.beginPath(); ctx.moveTo(x,pad); ctx.lineTo(x,pad+height); ctx.stroke(); }
 
@@ -114,7 +129,19 @@
       hCuts.forEach(r=>{ const y=pad+r*ch; ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(pad+width,y); ctx.stroke(); });
       vCuts.forEach(c=>{ const x=pad+c*cw; ctx.beginPath(); ctx.moveTo(x,pad); ctx.lineTo(x,pad+height); ctx.stroke(); });
 
-      // areas overlay
+      // highlights (drag rectangles)
+      highlights.forEach(h=>{
+        const x=pad+h.c0*cw, y=pad+h.r0*ch, w=(h.c1-h.c0)*cw, hh=(h.r1-h.r0)*ch;
+        ctx.fillStyle = 'rgba(30,144,255,0.12)'; ctx.fillRect(x,y,w,hh);
+        ctx.strokeStyle='#1e90ff'; ctx.lineWidth=2; ctx.strokeRect(x,y,w,hh);
+        ctx.fillStyle = lightTheme ? '#111' : '#eaeaea';
+        ctx.font = '600 16px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto';
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        const ww=(h.c1-h.c0), hhCells=(h.r1-h.r0);
+        ctx.fillText(`${ww}×${hhCells} = ${ww*hhCells}`, x+w/2, y+hh/2);
+      });
+
+      // areas from partitions
       if(showAreas){
         const v=[0,...Array.from(vCuts).sort((a,b)=>a-b),W];
         const h=[0,...Array.from(hCuts).sort((a,b)=>a-b),H];
@@ -129,14 +156,19 @@
           }
         }
       }
+
+      // product
       if(showProductOnly){
         ctx.fillStyle = lightTheme ? '#111' : '#eaeaea';
         ctx.font = '700 18px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto';
         ctx.textAlign='left'; ctx.textBaseline='alphabetic';
         ctx.fillText(`Product: ${W}×${H} = ${W*H}`, 12, field.height-12);
       }
+
       renderChips();
+      updateEquation();
     }
+
     function renderChips(){
       const axis = document.getElementById('axis'); axis.innerHTML='';
       const v=[0,...Array.from(vCuts).sort((a,b)=>a-b),W];
@@ -149,39 +181,119 @@
       const ex=document.createElement('div'); ex.className='chip'; ex.textContent=`Expression: ${document.getElementById('exprLabel').value}`;
       axis.appendChild(wEl); axis.appendChild(hEl); axis.appendChild(ex);
     }
+
+    function updateEquation(){
+      const eq=document.getElementById('equation');
+      const v=[0,...Array.from(vCuts).sort((a,b)=>a-b),W];
+      const h=[0,...Array.from(hCuts).sort((a,b)=>a-b),H];
+      const wParts=[], hParts=[];
+      for(let i=0;i<v.length-1;i++) wParts.push(v[i+1]-v[i]);
+      for(let i=0;i<h.length-1;i++) hParts.push(h[i+1]-h[i]);
+      const lhs = `${W}×${H}`;
+      let rhs = '';
+      if(hCuts.size===0 && vCuts.size>0){
+        // like 6×7 = 6×6 + 6×1
+        rhs = wParts.map(w=>`${H}×${w}`).join(' + ');
+      } else if(vCuts.size===0 && hCuts.size>0){
+        // like 7×6 = 7×2 + 7×4
+        rhs = hParts.map(hh=>`${W}×${hh}`).join(' + ');
+      } else if(vCuts.size>0 && hCuts.size>0){
+        // full expansion: sum of all sub-rectangles
+        const terms=[];
+        hParts.forEach(hh=> wParts.forEach(ww=> terms.push(`${ww}×${hh}`)));
+        rhs = terms.join(' + ');
+      } else {
+        rhs = `${W}×${H}`;
+      }
+      eq.textContent = `${lhs} = ${rhs}`;
+    }
+
+    // --------- Interaction ---------
+    function setRectangle(w,h){
+      W=w; H=h; vCuts.clear(); hCuts.clear(); highlights.length=0;
+      showAreas=false; showProductOnly=false;
+      draw();
+    }
+
     function nearestCut(x,y){
       const {pad,width,height,cw,ch} = geom();
       if(x<pad||x>pad+width||y<pad||y>pad+height) return null;
       const colPos=(x-pad)/cw, rowPos=(y-pad)/ch;
       const cN=Math.round(colPos), rN=Math.round(rowPos);
       const dx=Math.abs(colPos-cN)*cw, dy=Math.abs(rowPos-rN)*ch;
-      if(dx<dy){ if(cN>0&&cN<W) return {type:'v',index:cN}; }
-      else{ if(rN>0&&rN<H) return {type:'h',index:rN}; }
+      if(dx<dy){ if(cN>0 && cN<W) return {type:'v',index:cN}; }
+      else{ if(rN>0 && rN<H) return {type:'h',index:rN}; }
       return null;
     }
 
+    function pixelToCell(x,y){
+      const {pad,width,height,cw,ch}=geom();
+      const c=Math.min(W, Math.max(0, Math.floor((x-pad)/cw)));
+      const r=Math.min(H, Math.max(0, Math.floor((y-pad)/ch)));
+      return {c,r};
+    }
+
+    // Drag rectangle handlers
+    field.addEventListener('mousedown', (e)=>{
+      if(!dragMode) return;
+      const rect = field.getBoundingClientRect();
+      const x=(e.clientX-rect.left)*(field.width/rect.width);
+      const y=(e.clientY-rect.top)*(field.height/rect.height);
+      dragging=true; dragStart=pixelToCell(x,y);
+    });
+    field.addEventListener('mousemove', (e)=>{
+      if(!dragging||!dragMode) return;
+      draw();
+      const rect = field.getBoundingClientRect();
+      const x=(e.clientX-rect.left)*(field.width/rect.width);
+      const y=(e.clientY-rect.top)*(field.height/rect.height);
+      const now=pixelToCell(x,y);
+      const {pad,cw,ch}=geom();
+      const r0=Math.min(dragStart.r, now.r), r1=Math.max(dragStart.r, now.r);
+      const c0=Math.min(dragStart.c, now.c), c1=Math.max(dragStart.c, now.c);
+      ctx.save(); ctx.globalAlpha=0.35; ctx.fillStyle='#1e90ff';
+      ctx.fillRect(pad+c0*cw, pad+r0*ch, (c1-c0)*cw, (r1-r0)*ch); ctx.restore();
+    });
+    field.addEventListener('mouseup', (e)=>{
+      if(!dragMode||!dragging) return;
+      dragging=false;
+      const rect = field.getBoundingClientRect();
+      const x=(e.clientX-rect.left)*(field.width/rect.width);
+      const y=(e.clientY-rect.top)*(field.height/rect.height);
+      const end=pixelToCell(x,y);
+      const r0=Math.min(dragStart.r, end.r), r1=Math.max(dragStart.r, end.r);
+      const c0=Math.min(dragStart.c, end.c), c1=Math.max(dragStart.c, end.c);
+      if(r1>r0 && c1>c0){ highlights.push({r0,r1,c0,c1}); }
+      draw();
+    });
+
+    // Click-to-use partition
     field.addEventListener('click', (e)=>{
-      if(!drawArmed) return; // must press each time
+      if(!clickCutArmed) return;
       const rect = field.getBoundingClientRect();
       const x=(e.clientX-rect.left)*(field.width/rect.width);
       const y=(e.clientY-rect.top)*(field.height/rect.height);
       const cut=nearestCut(x,y);
       if(cut){ if(cut.type==='v') vCuts.add(cut.index); if(cut.type==='h') hCuts.add(cut.index); }
-      drawArmed=false; draw();
+      clickCutArmed=false; draw();
     });
 
-    // UI
+    // UI buttons / toggles
     document.getElementById('applyExpr').addEventListener('click', ()=>{
       const p=parseExpr(document.getElementById('expr').value); if(!p) return;
-      W=p.w; H=p.h; vCuts.clear(); hCuts.clear(); showAreas=false; showProductOnly=false; draw();
+      setRectangle(p.w, p.h);
+      document.getElementById('exprLabel').value = `${p.w} × ${p.h}`;
     });
     document.getElementById('toggleTheme').addEventListener('change', e=>{ lightTheme=e.target.checked; draw(); });
     document.getElementById('toggleDots').addEventListener('change', e=>{ showDots=e.target.checked; draw(); });
-    document.getElementById('drawPartition').addEventListener('click', ()=>{ drawArmed=true; });
-    document.getElementById('resetPartitions').addEventListener('click', ()=>{ vCuts.clear(); hCuts.clear(); draw(); });
+    document.getElementById('drawPartition').addEventListener('click', ()=>{ clickCutArmed=true; dragMode=false; });
+    document.getElementById('dragRect').addEventListener('click', ()=>{ dragMode=true; clickCutArmed=false; });
+    document.getElementById('resetPartitions').addEventListener('click', ()=>{ vCuts.clear(); hCuts.clear(); updateEquation(); draw(); });
+    document.getElementById('clearHighlights').addEventListener('click', ()=>{ highlights.length=0; draw(); });
     document.getElementById('toggleAreas').addEventListener('click', ()=>{ showAreas=!showAreas; draw(); });
     document.getElementById('showProduct').addEventListener('click', ()=>{ showProductOnly=!showProductOnly; draw(); });
 
+    // initial render
     draw();
   </script>
 </body>

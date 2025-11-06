@@ -51,55 +51,39 @@
 
 <div class="wrap">
   <div class="panel">
-    <div class="panelHead"><h2>Controls</h2><button id="collapseControls" class="collapser" aria-expanded="true" aria-controls="controlsBody" title="Collapse/expand controls">Hide</button></div>
+    <div class="panelHead">
+      <h2>Controls</h2>
+      <button id="collapseControls" class="collapser" aria-expanded="true" aria-controls="controlsBody">Hide</button>
+    </div>
+
     <div id="controlsBody">
       <div class="row">
-      <label>Dots across (columns)</label><input id="gridCols" type="number" min="5" max="60" value="20">
-    </div>
-    <div class="row">
-      <label>Dots down (rows)</label><input id="gridRows" type="number" min="5" max="60" value="20">
-    </div>
-
-    
-
-    
-      <div class="row">
-        <label>Split at</label>
-        <input id="splitAt" type="number" min="0" value="6">
+        <label>Dots across (columns)</label><input id="gridCols" type="number" min="5" max="60" value="20">
       </div>
-    </div>
+      <div class="row">
+        <label>Dots down (rows)</label><input id="gridRows" type="number" min="5" max="60" value="20">
+      </div>
 
-    <div class="row" style="grid-template-columns:1fr auto"><label>High-contrast / thick lines</label><label class="toggle"><span id="hcLabel">OFF</span><input id="hcToggle" type="checkbox"></label></div>
-    <div class="row"><label>Theme</label>
-      <select id="themeSel">
-        <option value="dark" selected>Dark</option>
-        <option value="contrast">High Contrast Dark</option>
-        <option value="light">Light</option>
-      </select>
-    </div>
+      <div class="row" style="grid-template-columns:1fr auto"><label>High-contrast / thick lines</label><label class="toggle"><span id="hcLabel">OFF</span><input id="hcToggle" type="checkbox"></label></div>
+      <div class="row"><label>Theme</label>
+        <select id="themeSel">
+          <option value="dark" selected>Dark</option>
+          <option value="contrast">High Contrast Dark</option>
+          <option value="light">Light</option>
+        </select>
+      </div>
+      <div class="row" style="grid-template-columns:1fr auto"><label>Show dots</label><label class="toggle"><span id="dotsLabel">ON</span><input id="dotsToggle" type="checkbox" checked></label></div>
 
-    <div class="note"><b>Partitions:</b> Shift+drag inside a selected rectangle to add a partition (drag direction decides vertical or horizontal). Drag a partition line to move it. Ctrl/Cmd+click a partition line to delete it.</div>
+      <div class="note"><b>Partitions:</b> Shift+drag inside a selected rectangle to add a partition (drag direction decides vertical or horizontal). Drag a partition line to move it. Ctrl/Cmd+click a partition line to delete it.</div>
 
-    <div class="btns">
-      <button id="reset">Reset</button>
-      <button id="delete" class="danger">Delete selected</button>
-      <button id="export">Export PNG</button>
-    </div>
+      <div class="btns">
+        <button id="reset">Reset</button>
+        <button id="delete" class="danger">Delete selected</button>
+        <button id="export">Export PNG</button>
+      </div>
 
-    <div id="equation" aria-live="polite"></div>
-    <div class="legend">
-      <span class="swatch" style="background:#ffffff; border:1px solid #1c222a"></span> Dots
-      <span class="kbd">Drag empty grid: new rect</span>
-      <span class="kbd">Click rect: select</span>
-      <span class="kbd">Drag selected: move</span>
-      <span class="kbd">Shift+drag inside: add partition (auto H/V)</span>
-      <span class="kbd">Drag line: move partition</span>
-      <span class="kbd">Ctrl+click line: delete partition</span>
+      <div id="equation" aria-live="polite"></div>
     </div>
-    <div class="note">
-      Tip: <b>Drag from one dot to another</b> to draw a rectangle. <b>Drag inside</b> to move it. Use <b>Shift+drag</b> to add partitions; <b>drag a line</b> to adjust; <b>Ctrl/Cmd+click</b> to delete.
-    </div>
-  </div>
   </div>
 
   <div class="panel canvasWrap">
@@ -117,15 +101,17 @@
   let selectedId = null;
   let dragMode = null, dragData = null; // 'new','move','splitV','splitH','newSplit'
   let theme = 'dark';
+  let showDots = true;
 
   // --- DOM ---
   const svg = document.getElementById('board');
   const gridCols = document.getElementById('gridCols');
   const gridRows = document.getElementById('gridRows');
-  const dotSpacingCtl = document.getElementById('dotSpacingCtl');
   const hcToggle = document.getElementById('hcToggle');
   const hcLabel = document.getElementById('hcLabel');
   const themeSel = document.getElementById('themeSel');
+  const dotsToggle = document.getElementById('dotsToggle');
+  const dotsLabel = document.getElementById('dotsLabel');
 
   const equation  = document.getElementById('equation');
   const btnReset  = document.getElementById('reset');
@@ -160,22 +146,23 @@
   function draw(){
     cols = clamp(+gridCols.value,5,60);
     rows = clamp(+gridRows.value,5,60);
-    if (dotSpacingCtl) dotSpacing = clamp(+dotSpacingCtl.value || 28,16,60);
 
     sizeSVG(); while(svg.firstChild) svg.removeChild(svg.firstChild);
 
-    // Dots
-    const dotGroup = document.createElementNS('http://www.w3.org/2000/svg','g');
-    for(let rr=0; rr<rows; rr++){
-      for(let cc=0; cc<cols; cc++){
-        const cx = pad + cc*dotSpacing, cy = pad + rr*dotSpacing;
-        const dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
-        dot.setAttribute('cx', cx); dot.setAttribute('cy', cy);
-        dot.setAttribute('r', getDotRadius()); dot.setAttribute('fill', getDotColor());
-        dotGroup.appendChild(dot);
+    // Dots (optional)
+    if (showDots){
+      const dotGroup = document.createElementNS('http://www.w3.org/2000/svg','g');
+      for(let rr=0; rr<rows; rr++){
+        for(let cc=0; cc<cols; cc++){
+          const cx = pad + cc*dotSpacing, cy = pad + rr*dotSpacing;
+          const dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
+          dot.setAttribute('cx', cx); dot.setAttribute('cy', cy);
+          dot.setAttribute('r', getDotRadius()); dot.setAttribute('fill', getDotColor());
+          dotGroup.appendChild(dot);
+        }
       }
+      svg.appendChild(dotGroup);
     }
-    svg.appendChild(dotGroup);
 
     // Rects + partitions
     rects.forEach(R=>{
@@ -313,7 +300,6 @@
     const R = rectAt(g.c, g.r);
     if(R){
       selectedId = R.id;
-
       const near = nearestSplit(R, p);
       if (near && (e.ctrlKey || e.metaKey)){
         if (near.dir==='v') R.splits.v.splice(near.index,1); else R.splits.h.splice(near.index,1);
@@ -374,31 +360,29 @@
 
   // --- Controls wiring ---
   [gridCols, gridRows].forEach(el=> el && el.addEventListener('input', draw));
-  if (dotSpacingCtl) dotSpacingCtl.addEventListener('input', draw);
   if (hcToggle) hcToggle.addEventListener('input', ()=>{ if(hcLabel) hcLabel.textContent = hcToggle.checked? 'ON':'OFF'; draw(); });
   if (themeSel) themeSel.addEventListener('input', ()=>{ theme = themeSel.value; draw(); });
+  if (dotsToggle) dotsToggle.addEventListener('input', ()=>{ showDots = !!dotsToggle.checked; dotsLabel && (dotsLabel.textContent = showDots? 'ON':'OFF'); draw(); });
 
   btnDelete && btnDelete.addEventListener('click', ()=>{ if(!sel()) return; const idx = rects.findIndex(r=>r.id===selectedId); if(idx>=0){ rects.splice(idx,1); selectedId = rects.length? rects[rects.length-1].id : null; draw(); } });
 
   btnReset && btnReset.addEventListener('click', ()=>{
     rects.length = 0; nextId=1; selectedId=null;
-    gridCols && (gridCols.value=20); gridRows && (gridRows.value=20); dotSpacingCtl && (dotSpacingCtl.value=28);
+    gridCols && (gridCols.value=20); gridRows && (gridRows.value=20);
     if (hcToggle){ hcToggle.checked=false; hcLabel && (hcLabel.textContent='OFF'); }
-    themeSel && (themeSel.value='dark'); theme='dark';
+    if (themeSel){ themeSel.value='dark'; theme='dark'; }
+    if (dotsToggle){ dotsToggle.checked=true; showDots=true; dotsLabel && (dotsLabel.textContent='ON'); }
     draw();
   });
 
   btnExport && btnExport.addEventListener('click', ()=>{
-    const serializer=new XMLSerializer();
-    const src=serializer.serializeToString(svg);
-    const img=new Image();
-    const blob=new Blob([src],{type:'image/svg+xml;charset=utf-8'});
-    const url=URL.createObjectURL(blob);
+    const serializer=new XMLSerializer(); const src=serializer.serializeToString(svg); const img=new Image();
+    const blob=new Blob([src],{type:'image/svg+xml;charset=utf-8'}); const url=URL.createObjectURL(blob);
     img.onload=function(){ const canvas=document.createElement('canvas'); canvas.width=svg.viewBox.baseVal.width; canvas.height=svg.viewBox.baseVal.height; const ctx=canvas.getContext('2d'); ctx.fillStyle= (theme==='light'? '#f3f6fb' : '#0a0d11'); ctx.fillRect(0,0,canvas.width,canvas.height); ctx.drawImage(img,0,0); URL.revokeObjectURL(url); canvas.toBlob((b)=>{ const a=document.createElement('a'); a.download=`partition_multi.png`; a.href=URL.createObjectURL(b); a.click(); }); };
     img.src=url;
   });
 
-  // Collapsible controls
+  // Collapsible controls — only hides controlsBody, never the canvas
   if (collapseBtn){
     collapseBtn.addEventListener('click', ()=>{
       controlsPanel.classList.toggle('collapsed');

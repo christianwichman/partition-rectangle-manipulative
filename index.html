@@ -60,31 +60,29 @@
       <label>Dots down (rows)</label><input id="gridRows" type="number" min="5" max="60" value="20">
     </div>
 
-    <div class="row" style="grid-template-columns:1fr auto">
-      <label>Partition</label>
-      <label class="toggle">
-        <span id="partLabel">OFF</span>
-        <input id="partToggle" type="checkbox" />
-      </label>
-    </div>
+    
 
-    <div id="splitControls">
-      <div class="row">
-        <label>Split direction</label>
-        <select id="splitDir">
-          <option value="vertical">Vertical (split columns)</option>
-          <option value="horizontal">Horizontal (split rows)</option>
-        </select>
-      </div>
+    
       <div class="row">
         <label>Split at</label>
         <input id="splitAt" type="number" min="0" value="6">
       </div>
     </div>
 
+    <div class="row" style="grid-template-columns:1fr auto"><label>High-contrast / thick lines</label><label class="toggle"><span id="hcLabel">OFF</span><input id="hcToggle" type="checkbox"></label></div>
+    <div class="row"><label>Theme</label>
+      <select id="themeSel">
+        <option value="dark" selected>Dark</option>
+        <option value="contrast">High Contrast Dark</option>
+        <option value="light">Light</option>
+      </select>
+    </div>
+
+    <div class="note"><b>Partitions:</b> Shift+drag inside a selected rectangle to add a partition (drag direction decides vertical or horizontal). Drag a partition line to move it. Ctrl/Cmd+click a partition line to delete it.</div>
+
     <div class="btns">
-      <button id="example">Example 6×7 → 6+1</button>
       <button id="reset">Reset</button>
+      <button id="delete" class="danger">Delete selected</button>
       <button id="export">Export PNG</button>
     </div>
 
@@ -99,7 +97,7 @@
       <span class="kbd">Ctrl+click line: delete partition</span>
     </div>
     <div class="note">
-      Tip: <b>Drag from one dot to another</b> to draw a rectangle. <b>Drag inside</b> to move it. When partition is ON, <b>drag the split line</b> to adjust it.
+      Tip: <b>Drag from one dot to another</b> to draw a rectangle. <b>Drag inside</b> to move it. Use <b>Shift+drag</b> to add partitions; <b>drag a line</b> to adjust; <b>Ctrl/Cmd+click</b> to delete.
     </div>
   </div>
   </div>
@@ -115,10 +113,10 @@
   let dotSpacing = 28, pad = 30;
   let cols = 20, rows = 20;
   let nextId = 1;
-  // rect: {id,x,y,w,h, splits:{v:number[], h:number[]}, colors:{border}}
-  const rects = [];
+  const rects = []; // {id,x,y,w,h, splits:{v:[],h:[]}}
   let selectedId = null;
-  let dragMode = null, dragData = null; // 'new','move','splitV','splitH'
+  let dragMode = null, dragData = null; // 'new','move','splitV','splitH','newSplit'
+  let theme = 'dark';
 
   // --- DOM ---
   const svg = document.getElementById('board');
@@ -127,22 +125,15 @@
   const dotSpacingCtl = document.getElementById('dotSpacingCtl');
   const hcToggle = document.getElementById('hcToggle');
   const hcLabel = document.getElementById('hcLabel');
+  const themeSel = document.getElementById('themeSel');
 
-  const rWctl = document.getElementById('rW');
-  const rHctl = document.getElementById('rH');
-  const rectIdCtl = document.getElementById('rectId');
-  const splitControls = document.getElementById('splitControls');
-  const fmtSel    = document.getElementById('fmt');
   const equation  = document.getElementById('equation');
-
-  const colA = document.getElementById('colA');
-  const colB = document.getElementById('colB');
-  const colBorder = document.getElementById('colBorder');
-
-  const btnExample= document.getElementById('example');
   const btnReset  = document.getElementById('reset');
   const btnDelete = document.getElementById('delete');
   const btnExport = document.getElementById('export');
+
+  const controlsPanel = document.querySelector('.wrap > .panel');
+  const collapseBtn = document.getElementById('collapseControls');
 
   // --- Helpers ---
   const clamp = (v,min,max)=>Math.max(min,Math.min(max,v));
@@ -152,9 +143,13 @@
                               r: clamp(Math.round((y - pad)/dotSpacing), 0, rows-1) });
   const sizeSVG = ()=>{ const w = pad*2 + (cols-1)*dotSpacing, h = pad*2 + (rows-1)*dotSpacing; svg.setAttribute('viewBox',`0 0 ${w} ${h}`); svg.setAttribute('width',w); svg.setAttribute('height',h); };
   const insideRect = (R,c,rr)=> c>=R.x && c<=R.x+(R.w-1) && rr>=R.y && rr<=R.y+(R.h-1);
-  const getStrokeWidth = ()=> hcToggle && hcToggle.checked? 3.2 : 2.4;
-  const getSplitWidth  = ()=> hcToggle && hcToggle.checked? 3.0 : 2.2;
-  const getDotRadius   = ()=> hcToggle && hcToggle.checked? 3.6 : 2.8;
+
+  function getStrokeWidth(){ return hcToggle && hcToggle.checked? 3.2 : 2.4; }
+  function getSplitWidth(){  return hcToggle && hcToggle.checked? 3.0 : 2.2; }
+  function getDotRadius(){   return hcToggle && hcToggle.checked? 3.6 : 2.8; }
+  function getDotColor(){ return theme==='light' ? '#1a1f26' : '#ffffff'; }
+  function getSplitColor(){ return theme==='contrast' ? '#ffed75' : '#ffd7a8'; }
+  function getBorderColor(){ return theme==='contrast' ? '#7ad7ff' : '#56a0ff'; }
 
   function uniqSorted(arr, max){
     const set = new Set(arr.filter(n=>Number.isInteger(n) && n>0 && n<max));
@@ -176,7 +171,7 @@
         const cx = pad + cc*dotSpacing, cy = pad + rr*dotSpacing;
         const dot = document.createElementNS('http://www.w3.org/2000/svg','circle');
         dot.setAttribute('cx', cx); dot.setAttribute('cy', cy);
-        dot.setAttribute('r', getDotRadius()); dot.setAttribute('fill', '#ffffff');
+        dot.setAttribute('r', getDotRadius()); dot.setAttribute('fill', getDotColor());
         dotGroup.appendChild(dot);
       }
     }
@@ -195,7 +190,7 @@
         const line = document.createElementNS('http://www.w3.org/2000/svg','line');
         line.setAttribute('x1', x); line.setAttribute('x2', x);
         line.setAttribute('y1', topY); line.setAttribute('y2', botY);
-        line.setAttribute('stroke', '#ffd7a8');
+        line.setAttribute('stroke', getSplitColor());
         line.setAttribute('stroke-width', getSplitWidth());
         line.dataset.rect = R.id; line.dataset.dir='v'; line.dataset.at=at;
         svg.appendChild(line);
@@ -205,7 +200,7 @@
         const line = document.createElementNS('http://www.w3.org/2000/svg','line');
         line.setAttribute('x1', leftX); line.setAttribute('x2', rightX);
         line.setAttribute('y1', y); line.setAttribute('y2', y);
-        line.setAttribute('stroke', '#ffd7a8');
+        line.setAttribute('stroke', getSplitColor());
         line.setAttribute('stroke-width', getSplitWidth());
         line.dataset.rect = R.id; line.dataset.dir='h'; line.dataset.at=at;
         svg.appendChild(line);
@@ -217,19 +212,17 @@
       br.setAttribute('width', (R.w-1)*dotSpacing);
       br.setAttribute('height',(R.h-1)*dotSpacing);
       br.setAttribute('fill','none');
-      br.setAttribute('stroke', (R.colors && R.colors.border) || (colBorder? colBorder.value : '#56a0ff'));
+      br.setAttribute('stroke', getBorderColor());
       br.setAttribute('stroke-width', selectedId===R.id? getStrokeWidth()*1.35 : getStrokeWidth());
       svg.appendChild(br);
 
       addLabels(R);
     });
 
-    refreshControls();
     updateEquation();
   }
 
-  function segmentLabelsPositions(start, len, splits){
-    // return [{midPx, length}] positions for label centers along axis
+  function segmentLabelsPositions(len, splits){
     const pts = [0, ...splits, len];
     const out = [];
     for(let i=0;i<pts.length-1;i++){
@@ -244,16 +237,13 @@
     g.setAttribute('font-size','12'); g.setAttribute('fill','#e8eef6');
 
     const leftX = pad + R.x*dotSpacing;
-    const rightX= pad + (R.x + (R.w-1))*dotSpacing;
     const topY  = pad + R.y*dotSpacing;
-    const botY  = pad + (R.y + (R.h-1))*dotSpacing;
 
-    // Width labels: if splits present, show only segment lengths; else show full width
     const vSplits = uniqSorted(R.splits.v||[], R.w);
     const hSplits = uniqSorted(R.splits.h||[], R.h);
 
-    const wSegs = segmentLabelsPositions(0, R.w, vSplits);
-    const hSegs = segmentLabelsPositions(0, R.h, hSplits);
+    const wSegs = segmentLabelsPositions(R.w, vSplits);
+    const hSegs = segmentLabelsPositions(R.h, hSplits);
 
     const topYLabel = Math.max(12, topY - 10);
     wSegs.forEach(seg=>{
@@ -274,24 +264,27 @@
     svg.appendChild(g);
   }
 
-  // --- Equation / live counts ---
+  // --- Equation / single-line decomposition ---
   function updateEquation(){
     const R = sel();
     if(!R){ equation.innerHTML = '<i>No rectangle selected. Drag on the grid to create one, or click a rectangle to select.</i>'; return; }
     const total = R.w * R.h;
     const v = uniqSorted(R.splits.v||[], R.w), h = uniqSorted(R.splits.h||[], R.h);
-    const wSegs = segmentLabelsPositions(0,R.w,v).map(s=>s.length);
-    const hSegs = segmentLabelsPositions(0,R.h,h).map(s=>s.length);
 
-    let html = `<div><b>Selected #${R.id}</b> — area <b>${total}</b></div>`;
-    html += `<div>Width segments: [${wSegs.join(' + ')}] = ${wSegs.reduce((a,b)=>a+b,0)}</div>`;
-    html += `<div>Height segments: [${hSegs.join(' + ')}] = ${hSegs.reduce((a,b)=>a+b,0)}</div>`;
-    if (fmtSel && fmtSel.value==='expanded' && wSegs.length && hSegs.length){
-      const products = [];
-      hSegs.forEach(hr=> wSegs.forEach(wc=> products.push(hr*wc)));
-      html += `<div>Tiles: ${products.join(' + ')} = <b>${products.reduce((a,b)=>a+b,0)}</b></div>`;
+    const wSegs = segmentLabelsPositions(R.w, v).map(s=>s.length);
+    const hSegs = segmentLabelsPositions(R.h, h).map(s=>s.length);
+
+    let line = `${R.h} × ${R.w}`;
+    if (wSegs.length>1 || hSegs.length>1){
+      if (wSegs.length >= hSegs.length){
+        const rhs = wSegs.map(w=>`${R.h} × ${w}`).join(' + ');
+        line += ` = ${rhs}`;
+      } else {
+        const rhs = hSegs.map(hh=>`${hh} × ${R.w}`).join(' + ');
+        line += ` = ${rhs}`;
+      }
     }
-    equation.innerHTML = html;
+    equation.innerHTML = `<div>${line} = <b>${total}</b></div>`;
   }
 
   // --- Interaction ---
@@ -299,13 +292,11 @@
   function rectAt(c,r){ return rects.slice().reverse().find(R=>insideRect(R,c,r)) || null; }
 
   function nearestSplit(R, p){
-    // Return {dir, index} if near a split line, else null
     const tol = 8;
     const leftX = pad + R.x*dotSpacing;
     const rightX= pad + (R.x + (R.w-1))*dotSpacing;
     const topY  = pad + R.y*dotSpacing;
     const botY  = pad + (R.y + (R.h-1))*dotSpacing;
-    // vertical
     for(let i=0;i<(R.splits.v||[]).length;i++){
       const at = R.splits.v[i]; const x = pad + (R.x + at)*dotSpacing;
       if (Math.abs(p.x - x) <= tol && p.y >= topY && p.y <= botY) return {dir:'v', index:i};
@@ -321,36 +312,21 @@
     const p = svgPointFromEvent(e), g = snapGrid(p.x, p.y);
     const R = rectAt(g.c, g.r);
     if(R){
-      selectedId = R.id; refreshControls();
+      selectedId = R.id;
 
-      // Delete split with Ctrl+click
       const near = nearestSplit(R, p);
       if (near && (e.ctrlKey || e.metaKey)){
-        if (near.dir==='v') R.splits.v.splice(near.index,1);
-        else R.splits.h.splice(near.index,1);
+        if (near.dir==='v') R.splits.v.splice(near.index,1); else R.splits.h.splice(near.index,1);
         draw(); return;
       }
-
-      // Move existing split if grabbed
       if (near){
         dragMode = (near.dir==='v') ? 'splitV' : 'splitH';
         dragData = { rectId:R.id, index:near.index };
         svg.setPointerCapture(e.pointerId); return;
       }
-
-      // Shift+drag to create new split, otherwise move rect
-      if(e.shiftKey){
-        dragMode='newSplit'; dragData={ rectId:R.id, start:g };
-        svg.setPointerCapture(e.pointerId); return;
-      }
-
-      dragMode='move'; dragData={ rectId:R.id, startC:g.c, startR:g.r, startX:R.x, startY:R.y };
-      svg.setPointerCapture(e.pointerId);
-    } else {
-      // start a new rectangle
-      dragMode='new'; dragData={ startC:g.c, startR:g.r };
-      svg.setPointerCapture(e.pointerId);
-    }
+      if(e.shiftKey){ dragMode='newSplit'; dragData={ rectId:R.id, start:g }; svg.setPointerCapture(e.pointerId); return; }
+      dragMode='move'; dragData={ rectId:R.id, startC:g.c, startR:g.r, startX:R.x, startY:R.y }; svg.setPointerCapture(e.pointerId);
+    } else { dragMode='new'; dragData={ startC:g.c, startR:g.r }; svg.setPointerCapture(e.pointerId); }
   });
 
   svg.addEventListener('pointermove', (e)=>{
@@ -359,14 +335,8 @@
     if(dragMode==='new'){
       const minC=Math.min(dragData.startC,g.c), maxC=Math.max(dragData.startC,g.c);
       const minR=Math.min(dragData.startR,g.r), maxR=Math.max(dragData.startR,g.r);
-      if(!dragData.tempId){
-        const id = nextId++;
-        const R = {id, x:minC, y:minR, w:(maxC-minC)+1, h:(maxR-minR)+1, splits:{v:[],h:[]}, colors:{border: (colBorder? colBorder.value : '#56a0ff')}};
-        rects.push(R); selectedId=id; dragData.tempId=id;
-      } else {
-        const R = byId(dragData.tempId);
-        R.x=minC; R.y=minR; R.w=(maxC-minC)+1; R.h=(maxR-minR)+1;
-      }
+      if(!dragData.tempId){ const id = nextId++; const R = {id, x:minC, y:minR, w:(maxC-minC)+1, h:(maxR-minR)+1, splits:{v:[],h:[]}}; rects.push(R); selectedId=id; dragData.tempId=id; }
+      else { const R = byId(dragData.tempId); R.x=minC; R.y=minR; R.w=(maxC-minC)+1; R.h=(maxR-minR)+1; }
       draw();
     } else if(dragMode==='move'){
       const R = byId(dragData.rectId); if(!R) return;
@@ -383,46 +353,22 @@
       R.splits.h[dragData.index] = clamp(g.r - R.y, 1, R.h-1);
       R.splits.h = uniqSorted(R.splits.h, R.h); draw();
     } else if(dragMode==='newSplit'){
-      // Decide orientation by movement
       const R = byId(dragData.rectId); if(!R) return;
       const dx = Math.abs(g.c - dragData.start.c), dy = Math.abs(g.r - dragData.start.r);
-      if(dx > dy){
-        // vertical split at column
-        const at = clamp(g.c - R.x, 1, R.w-1);
-        dragData.preview = {dir:'v', at};
-      } else {
-        const at = clamp(g.r - R.y, 1, R.h-1);
-        dragData.preview = {dir:'h', at};
-      }
-      // draw preview line (simple: redraw)
-      // add transient to copies then remove? Keep simple: just call draw();
+      dragData.preview = (dx > dy) ? {dir:'v', at: clamp(g.c - R.x, 1, R.w-1)} : {dir:'h', at: clamp(g.r - R.y, 1, R.h-1)};
       draw();
-      // then overlay preview
-      if(dragData.preview){
-        const leftX = pad + R.x*dotSpacing, rightX= pad + (R.x + (R.w-1))*dotSpacing;
-        const topY  = pad + R.y*dotSpacing, botY  = pad + (R.y + (R.h-1))*dotSpacing;
-        const line = document.createElementNS('http://www.w3.org/2000/svg','line');
-        if(dragData.preview.dir==='v'){
-          const x = pad + (R.x + dragData.preview.at)*dotSpacing;
-          line.setAttribute('x1', x); line.setAttribute('x2', x); line.setAttribute('y1', topY); line.setAttribute('y2', botY);
-        } else {
-          const y = pad + (R.y + dragData.preview.at)*dotSpacing;
-          line.setAttribute('x1', leftX); line.setAttribute('x2', rightX); line.setAttribute('y1', y); line.setAttribute('y2', y);
-        }
-        line.setAttribute('stroke', '#9bd0ff'); line.setAttribute('stroke-dasharray','4 4'); line.setAttribute('stroke-width', getSplitWidth());
-        svg.appendChild(line);
-      }
+      const leftX = pad + R.x*dotSpacing, rightX= pad + (R.x + (R.w-1))*dotSpacing;
+      const topY  = pad + R.y*dotSpacing, botY  = pad + (R.y + (R.h-1))*dotSpacing;
+      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+      if(dragData.preview.dir==='v'){ const x = pad + (R.x + dragData.preview.at)*dotSpacing; line.setAttribute('x1', x); line.setAttribute('x2', x); line.setAttribute('y1', topY); line.setAttribute('y2', botY); }
+      else { const y = pad + (R.y + dragData.preview.at)*dotSpacing; line.setAttribute('x1', leftX); line.setAttribute('x2', rightX); line.setAttribute('y1', y); line.setAttribute('y2', y); }
+      line.setAttribute('stroke', theme==='contrast' ? '#7ad7ff' : '#9bd0ff'); line.setAttribute('stroke-dasharray','4 4'); line.setAttribute('stroke-width', getSplitWidth()); svg.appendChild(line);
     }
   });
 
   window.addEventListener('pointerup', (e)=>{
     if(e.pointerId) try{ svg.releasePointerCapture(e.pointerId); }catch{}
-    if(dragMode==='newSplit' && dragData && dragData.preview){
-      const R = sel(); if(R){
-        if(dragData.preview.dir==='v'){ R.splits.v = uniqSorted([...R.splits.v, dragData.preview.at], R.w); }
-        else { R.splits.h = uniqSorted([...R.splits.h, dragData.preview.at], R.h); }
-      }
-    }
+    if(dragMode==='newSplit' && dragData && dragData.preview){ const R = sel(); if(R){ if(dragData.preview.dir==='v'){ R.splits.v = uniqSorted([...R.splits.v, dragData.preview.at], R.w); } else { R.splits.h = uniqSorted([...R.splits.h, dragData.preview.at], R.h); } } }
     dragMode=null; dragData=null; draw();
   });
 
@@ -430,30 +376,15 @@
   [gridCols, gridRows].forEach(el=> el && el.addEventListener('input', draw));
   if (dotSpacingCtl) dotSpacingCtl.addEventListener('input', draw);
   if (hcToggle) hcToggle.addEventListener('input', ()=>{ if(hcLabel) hcLabel.textContent = hcToggle.checked? 'ON':'OFF'; draw(); });
-
-  function refreshControls(){
-    const R = sel();
-    rectIdCtl && (rectIdCtl.value = R? R.id : '');
-    rWctl && (rWctl.value = R? R.w : 7);
-    rHctl && (rHctl.value = R? R.h : 6);
-    splitControls && splitControls.classList.toggle('dimmed', !R);
-  }
-
-  rWctl && rWctl.addEventListener('input', ()=>{ const R=sel(); if(!R) return; R.w = clamp(+rWctl.value,1,cols-R.x); R.splits.v = uniqSorted(R.splits.v, R.w); draw(); });
-  rHctl && rHctl.addEventListener('input', ()=>{ const R=sel(); if(!R) return; R.h = clamp(+rHctl.value,1,rows-R.y); R.splits.h = uniqSorted(R.splits.h, R.h); draw(); });
+  if (themeSel) themeSel.addEventListener('input', ()=>{ theme = themeSel.value; draw(); });
 
   btnDelete && btnDelete.addEventListener('click', ()=>{ if(!sel()) return; const idx = rects.findIndex(r=>r.id===selectedId); if(idx>=0){ rects.splice(idx,1); selectedId = rects.length? rects[rects.length-1].id : null; draw(); } });
-
-  btnExample && btnExample.addEventListener('click', ()=>{
-    rects.length = 0; nextId=1;
-    const R = {id:nextId++, x:2, y:2, w:7, h:6, splits:{v:[6], h:[]}, colors:{border:'#56a0ff'}};
-    rects.push(R); selectedId=R.id; gridCols && (gridCols.value=20); gridRows && (gridRows.value=20); dotSpacingCtl && (dotSpacingCtl.value=28); draw();
-  });
 
   btnReset && btnReset.addEventListener('click', ()=>{
     rects.length = 0; nextId=1; selectedId=null;
     gridCols && (gridCols.value=20); gridRows && (gridRows.value=20); dotSpacingCtl && (dotSpacingCtl.value=28);
     if (hcToggle){ hcToggle.checked=false; hcLabel && (hcLabel.textContent='OFF'); }
+    themeSel && (themeSel.value='dark'); theme='dark';
     draw();
   });
 
@@ -463,20 +394,22 @@
     const img=new Image();
     const blob=new Blob([src],{type:'image/svg+xml;charset=utf-8'});
     const url=URL.createObjectURL(blob);
-    img.onload=function(){
-      const canvas=document.createElement('canvas');
-      canvas.width=svg.viewBox.baseVal.width; canvas.height=svg.viewBox.baseVal.height;
-      const ctx=canvas.getContext('2d'); ctx.fillStyle='#0a0d11'; ctx.fillRect(0,0,canvas.width,canvas.height);
-      ctx.drawImage(img,0,0); URL.revokeObjectURL(url);
-      canvas.toBlob((b)=>{ const a=document.createElement('a'); a.download=`partition_multi.png`; a.href=URL.createObjectURL(b); a.click(); });
-    }; img.src=url;
+    img.onload=function(){ const canvas=document.createElement('canvas'); canvas.width=svg.viewBox.baseVal.width; canvas.height=svg.viewBox.baseVal.height; const ctx=canvas.getContext('2d'); ctx.fillStyle= (theme==='light'? '#f3f6fb' : '#0a0d11'); ctx.fillRect(0,0,canvas.width,canvas.height); ctx.drawImage(img,0,0); URL.revokeObjectURL(url); canvas.toBlob((b)=>{ const a=document.createElement('a'); a.download=`partition_multi.png`; a.href=URL.createObjectURL(b); a.click(); }); };
+    img.src=url;
   });
 
+  // Collapsible controls
+  if (collapseBtn){
+    collapseBtn.addEventListener('click', ()=>{
+      controlsPanel.classList.toggle('collapsed');
+      const open = !controlsPanel.classList.contains('collapsed');
+      collapseBtn.setAttribute('aria-expanded', open);
+      collapseBtn.textContent = open ? 'Hide' : 'Show';
+    });
+  }
+
   // --- Init with one rect ---
-  (function initOne(){
-    const R = {id:nextId++, x:1, y:1, w:7, h:6, splits:{v:[], h:[]}, colors:{border:'#56a0ff'}};
-    rects.push(R); selectedId=R.id; draw();
-  })();
+  (function initOne(){ const R = {id:nextId++, x:1, y:1, w:7, h:6, splits:{v:[], h:[]}}; rects.push(R); selectedId=R.id; draw(); })();
 })();
 </script>
 </body>
